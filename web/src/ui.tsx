@@ -90,11 +90,11 @@ export const KOMPONEN_LABEL: Record<string, string> = {
   beban: "Beban",
 };
 
-const STATUS_INFO: Record<StatusReadiness, { ikon: string; label: string }> = {
-  hijau: { ikon: "✓", label: "Hijau" },
+export const STATUS_INFO: Record<StatusReadiness, { ikon: string; label: string }> = {
+  hijau: { ikon: "✓", label: "Siap" },
   kuning: { ikon: "!", label: "Kuning" },
   merah: { ikon: "✕", label: "Merah" },
-  abu_abu: { ikon: "–", label: "Abu-abu" },
+  abu_abu: { ikon: "–", label: "Data kurang" },
 };
 
 export function StatusBadge({ status }: { status: StatusReadiness }) {
@@ -105,6 +105,80 @@ export function StatusBadge({ status }: { status: StatusReadiness }) {
         {info.ikon}
       </span>
       {info.label}
+    </span>
+  );
+}
+
+// ───────────────────────── Ikon ─────────────────────────
+
+export function Logo({ ukuran }: { ukuran: number }) {
+  return (
+    <svg width={ukuran} height={ukuran} viewBox="0 0 64 64" aria-hidden>
+      <rect width="64" height="64" rx="12" fill="#CE1126" />
+      <path d="M12 38h10l6-16 7 25 6-16h11" fill="none" stroke="#FFFFFF" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+const IKON: Record<string, string> = {
+  papan: "M3 3h4v4H3zM9 3h4v4H9zM3 9h4v4H3zM9 9h4v4H9z",
+  atlet: "M8 8a3 3 0 100-6 3 3 0 000 6zM2.5 14a5.5 5.5 0 0111 0",
+  check: "M3 8.5l3 3 7-7",
+  sesi: "M2 13V9M6 13V4M10 13V7M14 13V2",
+  perisai: "M8 1.5l5 2v4c0 3-2 5-5 7-3-2-5-4-5-7v-4z",
+  gerigi:
+    "M8 5.5a2.5 2.5 0 100 5 2.5 2.5 0 000-5zM8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4",
+  tren: "M1.5 12l4-4.5 3 3 6-7",
+  catatan: "M3 2h7l3 3v9H3zM5.5 7h5M5.5 10h5",
+  kotak: "M1.5 9l2-6h9l2 6v4.5h-13zM1.5 9h4l1 2h3l1-2h4",
+  daftar: "M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.5M2.5 8h.5M2.5 12h.5",
+};
+
+export function Ikon({ nama }: { nama: string }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+      <path d={IKON[nama] ?? ""} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** Cincin readiness 0-100; kosong (abu-abu) bila skor belum ada. */
+export function CincinReadiness({ skor, status }: { skor: number | null; status: StatusReadiness }) {
+  const keliling = 339.3; // 2π × 54
+  const warna = { hijau: "var(--siap)", kuning: "var(--kuning)", merah: "var(--merah)", abu_abu: "var(--abu-ring)" }[status];
+  const isi = skor === null ? 0 : Math.max(0, Math.min(100, skor));
+  return (
+    <div className="cincin" role="img" aria-label={skor === null ? "Readiness belum tersedia" : `Readiness ${fmtAngka(skor, 1)}`}>
+      <svg width="160" height="160" viewBox="0 0 128 128">
+        <circle cx="64" cy="64" r="54" fill="none" stroke="var(--surface-2)" strokeWidth="12" />
+        {skor !== null && (
+          <circle
+            cx="64"
+            cy="64"
+            r="54"
+            fill="none"
+            stroke={warna}
+            strokeWidth="12"
+            strokeLinecap="round"
+            strokeDasharray={`${(isi / 100) * keliling} ${keliling}`}
+          />
+        )}
+      </svg>
+      <div className="isi">
+        <b>{fmtAngka(skor, 0)}</b>
+        <span>readiness</span>
+      </div>
+    </div>
+  );
+}
+
+export function SkorBar({ skor }: { skor: number | null }) {
+  return (
+    <span className="skor-bar">
+      <b>{fmtAngka(skor, 1)}</b>
+      <span className="bar" aria-hidden>
+        <i style={{ width: `${skor === null ? 0 : Math.max(0, Math.min(100, skor))}%` }} />
+      </span>
     </span>
   );
 }

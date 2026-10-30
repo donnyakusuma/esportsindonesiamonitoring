@@ -6,16 +6,19 @@ import { tambahHari } from "../../../src/domain/tanggal.js";
 import { CatatanItem, Linimasa, TulisCatatan } from "../bersama.js";
 import { TrenChart } from "../TrenChart.js";
 import {
+  CincinReadiness,
   dariInputWaktu,
   fmtAngka,
   fmtTanggal,
   fmtWaktu,
   Info,
+  inisial,
   JENIS_SESI_LABEL,
   keInputWaktu,
   KOMPONEN_LABEL,
   Kosong,
   Pesan,
+  SkorBar,
   StatusBadge,
   Tabs,
   useAksi,
@@ -73,17 +76,29 @@ function zTeks(k: KomponenSkor | undefined): string {
 function PapanTim({ buka }: { buka(athleteId: string): void }) {
   const { svc, actor, hariIni } = useApp();
   const [tanggal, setTanggal] = useState(hariIni);
+  const [pilih, setPilih] = useState<string | null>(null);
   const r = svc.papanTim(actor, { tanggal });
+  const info = svc.infoTim(actor);
   const baris: BarisPapanTim[] = r.ok ? r.data : [];
-  const jumlah = (s: StatusReadiness) => baris.filter((b) => b.status === s).length;
-  const belum = baris.filter((b) => !b.sudahCheckIn).length;
+  const dengan = (s: StatusReadiness) => baris.filter((b) => b.status === s);
+  const sudah = baris.filter((b) => b.sudahCheckIn).length;
+  const berskor = baris.filter((b) => b.readiness !== null);
+  const rataRata = berskor.length ? berskor.reduce((t, b) => t + b.readiness!, 0) / berskor.length : null;
+  const terpilih = baris.find((b) => b.athleteId === pilih) ?? baris[0];
+  const perhatian = baris.filter((b) => b.status === "merah" || b.status === "kuning");
+  const ambangKuning = info.ok ? info.data.scoreConfigBerlaku.ambangKuning : DEFAULT_SCORE_CONFIG.ambangKuning;
+
+  const namaDaftar = (l: BarisPapanTim[]) =>
+    l.length === 0 ? "Tidak ada" : l.length <= 2 ? l.map((b) => b.nama.split(" ")[0]).join(" dan ") : `${l[0]!.nama.split(" ")[0]} dan ${l.length - 1} lainnya`;
 
   return (
     <>
       <div className="judul">
         <div>
           <h1>Papan Tim</h1>
-          <p>Diurutkan dari yang paling butuh perhatian. Klik baris untuk melihat detail atlet.</p>
+          <p>
+            {fmtTanggal(tanggal)} · {sudah} dari {baris.length} atlet sudah check-in
+          </p>
         </div>
         <label className="row">
           <span className="ink-2">Tanggal</span>
@@ -91,69 +106,249 @@ function PapanTim({ buka }: { buka(athleteId: string): void }) {
         </label>
       </div>
       {!r.ok && <Pesan umpan={{ jenis: "gagal", teks: r.reason }} />}
+
       <div className="tiles">
-        {URUTAN.map((s) => (
-          <div className="tile" key={s}>
-            <div className="label">
-              <StatusBadge status={s} />
-            </div>
-            <div className="nilai">{jumlah(s)}</div>
-          </div>
-        ))}
         <div className="tile">
-          <div className="label">Belum check-in</div>
+          <div className="label">Sudah check-in</div>
           <div className="nilai">
-            {belum}
-            <span className="muted" style={{ fontSize: 14, fontWeight: 400 }}>
-              / {baris.length}
-            </span>
+            {sudah}
+            <small>/ {baris.length}</small>
           </div>
+          <div className="ket">{baris.length - sudah === 0 ? "Semua atlet sudah mengisi" : `${baris.length - sudah} atlet belum mengisi`}</div>
+        </div>
+        <div className="tile">
+          <div className="label">Status Merah</div>
+          <div className="nilai" style={{ color: "var(--merah)" }}>
+            {dengan("merah").length}
+            <small>atlet</small>
+          </div>
+          <div className="ket">{namaDaftar(dengan("merah"))}</div>
+        </div>
+        <div className="tile">
+          <div className="label">Status Kuning</div>
+          <div className="nilai" style={{ color: "var(--kuning)" }}>
+            {dengan("kuning").length}
+            <small>atlet</small>
+          </div>
+          <div className="ket">{namaDaftar(dengan("kuning"))}</div>
+        </div>
+        <div className="tile">
+          <div className="label">Rata-rata readiness</div>
+          <div className="nilai">
+            {fmtAngka(rataRata, 0)}
+            <small>/ 100</small>
+          </div>
+          <div className="ket">Dari {berskor.length} atlet yang punya skor</div>
         </div>
       </div>
-      <div className="card" style={{ padding: 0 }}>
-        <div className="table-wrap" style={{ border: 0 }}>
-          <table>
-            <thead>
-              <tr>
-                <th>Atlet</th>
-                <th>Status</th>
-                <th className="num">Readiness</th>
-                <th className="num">Wellness</th>
-                <th className="num" title="Skor z terhadap baseline pribadi; positif = lebih baik dari biasanya">
-                  z Wellness
-                </th>
-                <th className="num">z Tidur</th>
-                <th className="num">z Beban</th>
-                <th>Keterangan</th>
-              </tr>
-            </thead>
-            <tbody>
-              {baris.map((b) => (
-                <tr key={b.athleteId} className="klik" onClick={() => buka(b.athleteId)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && buka(b.athleteId)}>
-                  <td>
-                    <b>{b.nama}</b>
-                    {!b.sudahCheckIn && <div className="muted kecil">Belum check-in</div>}
-                  </td>
-                  <td>
-                    <StatusBadge status={b.status} />
-                  </td>
-                  <td className="num">{fmtAngka(b.readiness, 1)}</td>
-                  <td className="num">{fmtAngka(b.wellnessScore)}</td>
-                  <td className="num">{zTeks(b.komponen.wellness)}</td>
-                  <td className="num">{zTeks(b.komponen.tidur)}</td>
-                  <td className="num">{zTeks(b.komponen.beban)}</td>
-                  <td className="ink-2 kecil">{b.statusReason}</td>
+
+      <div className="grid-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(420px, 100%), 1fr))" }}>
+        {terpilih && (
+          <div className="card stack" style={{ gap: 18 }}>
+            <div className="row" style={{ gap: 12 }}>
+              <span className="avatar besar">{inisial(terpilih.nama)}</span>
+              <div>
+                <h2>{terpilih.nama}</h2>
+                <span className="muted">{terpilih.sudahCheckIn ? "Sudah check-in" : "Belum check-in"}</span>
+              </div>
+              <span style={{ marginLeft: "auto" }}>
+                <StatusBadge status={terpilih.status} />
+              </span>
+            </div>
+            <div className="ringkas">
+              <CincinReadiness skor={terpilih.readiness} status={terpilih.status} />
+              <div className="trio">
+                <div>
+                  <span className="k">Wellness</span>
+                  <span className="v">{fmtAngka(terpilih.wellnessScore)}</span>
+                </div>
+                <div>
+                  <span className="k">Tidur (z)</span>
+                  <span className="v">{zTeks(terpilih.komponen.tidur)}</span>
+                </div>
+                <div>
+                  <span className="k">Beban</span>
+                  <span className="v">
+                    {fmtAngka(terpilih.komponen.beban?.nilai ?? null)}
+                    <small> AU</small>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <p className="ink-2">{terpilih.statusReason}</p>
+            <div>
+              <button className="btn utama" onClick={() => buka(terpilih.athleteId)}>
+                Buka profil & tulis catatan
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="card">
+          <div className="card-head">
+            <h2>Readiness tim 7 hari</h2>
+            <span className="muted kecil">Rata-rata atlet yang punya skor</span>
+          </div>
+          <TrenTim sampai={tanggal} ambang={ambangKuning} />
+        </div>
+      </div>
+
+      <div className="grid-2" style={{ gridTemplateColumns: "minmax(0, 2.2fr) minmax(min(300px, 100%), 1fr)" }}>
+        <div className="card flush">
+          <div className="card-head">
+            <h2>Atlet</h2>
+            <span className="muted kecil">Diurutkan dari yang paling butuh perhatian</span>
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Atlet</th>
+                  <th>Readiness</th>
+                  <th>Status</th>
+                  <th className="num">Wellness</th>
+                  <th className="num" title="Skor z terhadap baseline pribadi; positif = lebih baik dari biasanya">
+                    z Tidur
+                  </th>
+                  <th className="num">Beban (AU)</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {baris.map((b) => (
+                  <tr
+                    key={b.athleteId}
+                    className="klik"
+                    aria-selected={b.athleteId === terpilih?.athleteId}
+                    style={b.athleteId === terpilih?.athleteId ? { background: "rgba(255,255,255,0.07)" } : undefined}
+                    onClick={() => setPilih(b.athleteId)}
+                    onDoubleClick={() => buka(b.athleteId)}
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === "Enter" && buka(b.athleteId)}
+                  >
+                    <td>
+                      <span className="atlet-sel">
+                        <span className="avatar gelap">{inisial(b.nama)}</span>
+                        <span>
+                          <b>{b.nama}</b>
+                          {!b.sudahCheckIn && <span className="muted kecil">Belum check-in</span>}
+                        </span>
+                      </span>
+                    </td>
+                    <td>
+                      <SkorBar skor={b.readiness} />
+                    </td>
+                    <td>
+                      <StatusBadge status={b.status} />
+                    </td>
+                    <td className="num">{fmtAngka(b.wellnessScore)}</td>
+                    <td className="num">{zTeks(b.komponen.tidur)}</td>
+                    <td className="num">{fmtAngka(b.komponen.beban?.nilai ?? null)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="catatan-kaki">
+            Klik baris untuk melihat ringkasan, klik dua kali atau tekan Enter untuk membuka profil. "Data kurang" berarti check-in atau
+            baseline pribadi belum cukup untuk menghitung skor. Tahap 1: komponen Reaksi (Tahap 2) dan Fisiologis (Tahap 3) belum punya
+            data, jadi bobotnya dibagi ulang ke Wellness, Tidur, dan Beban.
+          </p>
         </div>
+        <aside className="card stack" aria-label="Perlu tindak lanjut">
+          <h2>Perlu tindak lanjut</h2>
+          {perhatian.length === 0 ? (
+            <Kosong>Tidak ada atlet berstatus Merah atau Kuning.</Kosong>
+          ) : (
+            perhatian.map((b) => (
+              <div key={b.athleteId} className="catatan">
+                <div className="meta">
+                  <b>{b.nama}</b>
+                  <StatusBadge status={b.status} />
+                </div>
+                <div className="ink-2">{b.statusReason}</div>
+                <div>
+                  <button className="link kecil" onClick={() => buka(b.athleteId)}>
+                    Buka profil →
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </aside>
       </div>
-      <p className="muted kecil">
-        Tahap 1: komponen Reaksi (Tahap 2) dan Fisiologis (Tahap 3) belum punya data, jadi bobotnya dibagi ulang ke Wellness, Tidur,
-        dan Beban.
-      </p>
     </>
+  );
+}
+
+/** Rata-rata readiness tim per hari, 7 hari sampai tanggal terpilih. */
+function TrenTim({ sampai, ambang }: { sampai: string; ambang: number }) {
+  const { svc, actor } = useApp();
+  const hari = Array.from({ length: 7 }, (_, i) => tambahHari(sampai, i - 6));
+  const nilai = hari.map((t) => {
+    const r = svc.papanTim(actor, { tanggal: t });
+    const ada = r.ok ? r.data.filter((b) => b.readiness !== null) : [];
+    return ada.length ? ada.reduce((s, b) => s + b.readiness!, 0) / ada.length : null;
+  });
+  const ada = nilai.filter((v): v is number => v !== null);
+  const W = 520;
+  const H = 250;
+  const kiri = 36;
+  const kanan = 16;
+  const atas = 28;
+  const bawah = 30;
+  const min = Math.floor(Math.min(ambang, ...ada) / 10) * 10 - 10;
+  const max = Math.ceil(Math.max(ambang, ...ada) / 10) * 10 + 10;
+  const lo = Math.max(0, min);
+  const hi = Math.min(100, max);
+  const x = (i: number) => kiri + (i / 6) * (W - kiri - kanan);
+  const y = (v: number) => atas + (1 - (v - lo) / (hi - lo)) * (H - atas - bawah);
+  const garis: number[] = [];
+  for (let v = lo; v <= hi; v += 10) garis.push(v);
+  const titik = nilai.map((v, i) => (v === null ? null : { i, v }));
+  let d = "";
+  titik.forEach((p, k) => {
+    if (!p) return;
+    d += `${k > 0 && titik[k - 1] ? "L" : "M"}${x(p.i).toFixed(1)},${y(p.v).toFixed(1)}`;
+  });
+  const terakhir = [...titik].reverse().find(Boolean);
+
+  if (ada.length === 0) return <Kosong>Belum ada skor dalam 7 hari ini.</Kosong>;
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      width="100%"
+      role="img"
+      aria-label={`Rata-rata readiness tim 7 hari, terakhir ${fmtAngka(terakhir?.v ?? null, 1)}`}
+      style={{ display: "block" }}
+    >
+      {garis.map((v) => (
+        <g key={v}>
+          <line x1={kiri} x2={W - kanan} y1={y(v)} y2={y(v)} stroke="#fff" strokeOpacity={0.1} />
+          <text x={kiri - 8} y={y(v) + 4} textAnchor="end" fontSize={12} fill="var(--muted)">
+            {v}
+          </text>
+        </g>
+      ))}
+      <line x1={kiri} x2={W - kanan} y1={y(ambang)} y2={y(ambang)} stroke="var(--siap)" strokeWidth={1.5} strokeDasharray="5 5" />
+      <text x={kiri + 6} y={y(ambang) + 16} fontSize={12} fill="var(--siap)">
+        Siap {ambang}
+      </text>
+      <path d={d} fill="none" stroke="var(--accent)" strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
+      {titik.map((p) =>
+        p ? (
+          <g key={p.i}>
+            <circle cx={x(p.i)} cy={y(p.v)} r={p === terakhir ? 7 : 4} fill={p === terakhir ? "var(--accent)" : "#fff"} />
+            <text x={x(p.i)} y={y(p.v) - 14} textAnchor="middle" fontSize={13} fontWeight={600} fill="#fff">
+              {fmtAngka(p.v, 1)}
+            </text>
+          </g>
+        ) : null
+      )}
+      {hari.map((t, i) => (
+        <text key={t} x={x(i)} y={H - 8} textAnchor="middle" fontSize={12} fill="var(--muted)">
+          {new Date(t + "T12:00:00Z").toLocaleDateString("id-ID", { weekday: "short", timeZone: "UTC" })}
+        </text>
+      ))}
+    </svg>
   );
 }
 
@@ -180,21 +375,31 @@ function DetailAtlet({ athleteId, kembali }: { athleteId: string; kembali(): voi
       </div>
       {!tren.ok && <Pesan umpan={{ jenis: "gagal", teks: tren.reason }} />}
 
-      <div className="tiles">
-        <div className="tile">
-          <div className="label">Status hari ini</div>
-          <div className="nilai" style={{ fontSize: 18 }}>
+      <div className="card ringkas">
+        <CincinReadiness skor={skor.ok ? skor.data.readiness : null} status={skor.ok ? skor.data.status : "abu_abu"} />
+        <div className="stack" style={{ flex: "1 1 280px" }}>
+          <div className="row">
+            <h2>Hari ini</h2>
             <StatusBadge status={skor.ok ? skor.data.status : "abu_abu"} />
           </div>
-          <div className="muted kecil">{skor.ok ? skor.data.statusReason : "Check-in hari ini belum terisi."}</div>
-        </div>
-        <div className="tile">
-          <div className="label">Readiness</div>
-          <div className="nilai">{fmtAngka(skor.ok ? skor.data.readiness : null, 1)}</div>
-        </div>
-        <div className="tile">
-          <div className="label">Wellness Score</div>
-          <div className="nilai">{fmtAngka(skor.ok ? skor.data.wellnessScore : null)}</div>
+          <p className="ink-2">{skor.ok ? skor.data.statusReason : "Check-in hari ini belum terisi."}</p>
+          <div className="trio">
+            <div>
+              <span className="k">Readiness</span>
+              <span className="v">{fmtAngka(skor.ok ? skor.data.readiness : null, 1)}</span>
+            </div>
+            <div>
+              <span className="k">Wellness</span>
+              <span className="v">{fmtAngka(skor.ok ? skor.data.wellnessScore : null)}</span>
+            </div>
+            <div>
+              <span className="k">Beban</span>
+              <span className="v">
+                {fmtAngka(skor.ok ? (skor.data.komponen.beban?.nilai ?? null) : null)}
+                <small> AU</small>
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 

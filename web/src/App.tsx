@@ -4,7 +4,20 @@ import { buatDemo, hariIniTim, NAMA } from "./demo.js";
 import { HalamanAtlet, MENU_ATLET } from "./pages/atlet.js";
 import { HalamanManajer, MENU_MANAJER } from "./pages/manajer.js";
 import { HalamanStaf, hitungKotakMasuk, MENU_STAF } from "./pages/staf.js";
-import { type AppCtx, AppContext, fmtTanggal, inisial, labelPeran } from "./ui.js";
+import { type AppCtx, AppContext, fmtTanggal, Ikon, inisial, labelPeran, Logo } from "./ui.js";
+
+const IKON_MENU: Record<string, string> = {
+  hari_ini: "check",
+  tren: "tren",
+  catatan: "catatan",
+  persetujuan: "perisai",
+  audit: "daftar",
+  papan: "papan",
+  sesi: "sesi",
+  kotak_masuk: "kotak",
+  konfigurasi: "gerigi",
+  anggota: "atlet",
+};
 
 type Halaman =
   | { peran: "atlet"; h: HalamanAtlet }
@@ -54,13 +67,17 @@ export function App() {
       <div className="app">
         <aside className="side">
           <div className="brand">
-            <b>Readiness Esport</b>
-            <span>Divisi MLBB · Tahap 1</span>
+            <Logo ukuran={36} />
+            <div>
+              <b>Esports Indonesia</b>
+              <span>Divisi MLBB · Tahap 1</span>
+            </div>
           </div>
           <nav className="nav">
             {halaman.peran === "atlet" &&
               MENU_ATLET.map((m) => (
                 <button key={m.id} className={halaman.h === m.id ? "aktif" : ""} onClick={() => setHalaman({ peran: "atlet", h: m.id })}>
+                  <Ikon nama={IKON_MENU[m.id]!} />
                   {m.label}
                 </button>
               ))}
@@ -73,6 +90,7 @@ export function App() {
                     className={aktif ? "aktif" : ""}
                     onClick={() => setHalaman({ peran: "staf", h: { id: m.id } as HalamanStaf })}
                   >
+                    <Ikon nama={IKON_MENU[m.id]!} />
                     {m.label}
                     {m.id === "kotak_masuk" && kotakMasuk > 0 && <span className="hitung">{kotakMasuk}</span>}
                   </button>
@@ -81,6 +99,7 @@ export function App() {
             {halaman.peran === "manajer" &&
               MENU_MANAJER.map((m) => (
                 <button key={m.id} className={halaman.h === m.id ? "aktif" : ""} onClick={() => setHalaman({ peran: "manajer", h: m.id })}>
+                  <Ikon nama={IKON_MENU[m.id]!} />
                   {m.label}
                 </button>
               ))}
@@ -92,25 +111,23 @@ export function App() {
 
         <div className="main">
           <header className="top">
+            <span className="tanggal">{fmtTanggal(ctx.hariIni)}</span>
+            <label className="persona">
+              <span>Masuk sebagai</span>
+              <select value={actor.userId} onChange={(e) => gantiPersona(e.target.value)}>
+                {persona.map((p) => (
+                  <option key={p.userId} value={p.userId}>
+                    {ctx.nama(p.userId)} — {labelPeran(p)}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="siapa">
               <span className="avatar">{inisial(ctx.nama(actor.userId))}</span>
               <div>
                 <b>{ctx.nama(actor.userId)}</b>
-                <div className="muted kecil">{labelPeran(actor)}</div>
+                <div className="kecil">{labelPeran(actor)}</div>
               </div>
-            </div>
-            <div className="row">
-              <span className="muted kecil">{fmtTanggal(ctx.hariIni)}</span>
-              <label className="row">
-                <span className="ink-2 kecil">Masuk sebagai</span>
-                <select value={actor.userId} onChange={(e) => gantiPersona(e.target.value)}>
-                  {persona.map((p) => (
-                    <option key={p.userId} value={p.userId}>
-                      {ctx.nama(p.userId)} — {labelPeran(p)}
-                    </option>
-                  ))}
-                </select>
-              </label>
             </div>
           </header>
           <main className="konten" key={actor.userId}>

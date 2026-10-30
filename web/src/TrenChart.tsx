@@ -95,11 +95,11 @@ export function TrenChart(props: {
             </span>
           ))}
           <span>
-            <i className="key" style={{ background: "var(--critical)", height: 1 }} />
+            <i className="key putus" style={{ borderColor: "var(--merah)" }} />
             Ambang merah {props.ambangMerah}
           </span>
           <span>
-            <i className="key" style={{ background: "var(--warning)", height: 1 }} />
+            <i className="key putus" style={{ borderColor: "rgba(255,255,255,0.6)" }} />
             Ambang kuning {props.ambangKuning}
           </span>
         </div>
@@ -149,8 +149,8 @@ export function TrenChart(props: {
                 </text>
               </g>
             ))}
-            <line x1={PAD.kiri} x2={w - PAD.kanan} y1={y(props.ambangMerah)} y2={y(props.ambangMerah)} stroke="var(--critical)" strokeOpacity={0.55} />
-            <line x1={PAD.kiri} x2={w - PAD.kanan} y1={y(props.ambangKuning)} y2={y(props.ambangKuning)} stroke="var(--warning)" strokeOpacity={0.8} />
+            <line x1={PAD.kiri} x2={w - PAD.kanan} y1={y(props.ambangMerah)} y2={y(props.ambangMerah)} stroke="var(--merah)" strokeWidth={1.5} strokeDasharray="5 5" />
+            <line x1={PAD.kiri} x2={w - PAD.kanan} y1={y(props.ambangKuning)} y2={y(props.ambangKuning)} stroke="#fff" strokeOpacity={0.6} strokeWidth={1.5} strokeDasharray="5 5" />
             {hari.map((t, i) =>
               (i % langkahLabel === 0 && hari.length - 1 - i >= langkahLabel) || i === hari.length - 1 ? (
                 <text key={t} x={x(i)} y={TINGGI - 8} textAnchor="middle" fontSize={11} fill="var(--muted)">
@@ -163,7 +163,7 @@ export function TrenChart(props: {
               const { d, titikTunggal } = jalur(s.key);
               return (
                 <g key={s.key}>
-                  <path d={d} fill="none" stroke={s.warna} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+                  <path d={d} fill="none" stroke={s.warna} strokeWidth={s.key === "readiness" ? 3 : 2} strokeLinejoin="round" strokeLinecap="round" />
                   {titikTunggal.map((i) => (
                     <circle key={i} cx={x(i)} cy={y(perHari.get(hari[i]!)![s.key]!)} r={4} fill={s.warna} stroke="var(--surface)" strokeWidth={2} />
                   ))}
@@ -176,7 +176,7 @@ export function TrenChart(props: {
                 <circle
                   cx={x(hari.indexOf(terakhir))}
                   cy={y(perHari.get(terakhir)!.readiness!)}
-                  r={4}
+                  r={6}
                   fill="var(--series-1)"
                   stroke="var(--surface)"
                   strokeWidth={2}

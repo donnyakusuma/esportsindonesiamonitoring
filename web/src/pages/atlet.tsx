@@ -1,11 +1,12 @@
 import { useState } from "react";
-import type { CheckInItems, CheckInPayload, JenisPersetujuan, JenisSesi, PetaNyeri, Sesi } from "../../../src/index.js";
+import type { CheckInItems, CheckInPayload, JenisPersetujuan, JenisSesi, KomponenSkor, PetaNyeri, Sesi } from "../../../src/index.js";
 import { AREA_NYERI, RPE_LABELS } from "../../../src/index.js";
 import { tambahHari } from "../../../src/domain/tanggal.js";
 import { CatatanItem, Linimasa } from "../bersama.js";
 import { TrenChart } from "../TrenChart.js";
 import {
   AREA_NYERI_LABEL,
+  CincinReadiness,
   dariInputWaktu,
   fmtAngka,
   fmtJam,
@@ -87,21 +88,31 @@ function HariIni({ pindah }: { pindah(h: HalamanAtlet): void }) {
           </span>
         </Info>
       )}
-      <div className="tiles">
-        <div className="tile">
-          <div className="label">Status readiness</div>
-          <div className="nilai" style={{ fontSize: 18 }}>
+      <div className="card ringkas">
+        <CincinReadiness skor={skor.ok ? skor.data.readiness : null} status={skor.ok ? skor.data.status : "abu_abu"} />
+        <div className="stack" style={{ flex: "1 1 280px" }}>
+          <div className="row">
+            <h2>{skor.ok && skor.data.readiness !== null ? `Readiness ${fmtAngka(skor.data.readiness, 1)}` : "Readiness hari ini"}</h2>
             <StatusBadge status={skor.ok ? skor.data.status : "abu_abu"} />
           </div>
-          <div className="muted kecil">{skor.ok ? skor.data.statusReason : "Check-in hari ini belum terisi."}</div>
-        </div>
-        <div className="tile">
-          <div className="label">Readiness</div>
-          <div className="nilai">{fmtAngka(skor.ok ? skor.data.readiness : null, 1)}</div>
-        </div>
-        <div className="tile">
-          <div className="label">Wellness Score</div>
-          <div className="nilai">{fmtAngka(skor.ok ? skor.data.wellnessScore : null)}</div>
+          <p className="ink-2">{skor.ok ? skor.data.statusReason : "Check-in hari ini belum terisi."}</p>
+          <div className="trio">
+            <div>
+              <span className="k">Wellness</span>
+              <span className="v">{fmtAngka(skor.ok ? skor.data.wellnessScore : null)}</span>
+            </div>
+            <div>
+              <span className="k">Tidur (z)</span>
+              <span className="v">{zTeks(skor.ok ? skor.data.komponen.tidur : undefined)}</span>
+            </div>
+            <div>
+              <span className="k">Beban</span>
+              <span className="v">
+                {fmtAngka(skor.ok ? (skor.data.komponen.beban?.nilai ?? null) : null)}
+                <small> AU</small>
+              </span>
+            </div>
+          </div>
         </div>
       </div>
       <div className="grid-2">
@@ -119,6 +130,11 @@ function HariIni({ pindah }: { pindah(h: HalamanAtlet): void }) {
       </div>
     </>
   );
+}
+
+function zTeks(k: KomponenSkor | undefined): string {
+  if (!k || !k.tersedia || k.z === null) return "–";
+  return (k.z > 0 ? "+" : "") + fmtAngka(k.z, 1);
 }
 
 const BUTIR: { key: keyof CheckInItems; label: string; rendah: string; tinggi: string }[] = [
@@ -179,9 +195,12 @@ function FormCheckIn() {
   if (sudah && !mengubah) {
     return (
       <div className="stack">
-        <div className="card-head">
-          <h2>Check-in pagi</h2>
-          <span className="chip">Terkirim {fmtJam(sudah.updatedAt)}</span>
+        <div className="terkirim">
+          <span className="centang" aria-hidden>
+            ✓
+          </span>
+          <h2>Check-in terkirim</h2>
+          <span className="muted">Terkirim pukul {fmtJam(sudah.updatedAt)}</span>
         </div>
         <div className="ink-2">
           Tidur {fmtAngka(sudah.items.durasiTidurJam, 1)} jam, kualitas {sudah.items.kualitasTidur}/5 · kelelahan{" "}
@@ -193,7 +212,7 @@ function FormCheckIn() {
         ) : (
           <div>
             <button
-              className="btn"
+              className="btn lebar"
               onClick={() => {
                 setIsian({
                   items: sudah.items,
@@ -237,46 +256,75 @@ function FormCheckIn() {
       </div>
       {terkunci && <Info jenis="peringatan">Sesi pertama hari ini sudah dimulai, jadi Check-in tidak bisa dikirim lagi.</Info>}
 
-      <div className="fields">
-        <label className="field">
-          Durasi tidur semalam (jam)
-          <input
-            type="number"
-            min={0}
-            max={24}
-            step={0.5}
-            value={isian.items.durasiTidurJam}
-            onChange={(e) => setItem("durasiTidurJam", Number(e.target.value))}
-          />
-        </label>
-        <label className="field">
-          Screen time kemarin (jam)
-          <input
-            type="number"
-            min={0}
-            max={24}
-            step={0.5}
-            value={isian.screenTimeJamKemarin}
-            onChange={(e) => setIsian((s) => ({ ...s, screenTimeJamKemarin: Number(e.target.value) }))}
-          />
-        </label>
-      </div>
-
-      <div>
+      <div className="butir-grid">
+        <div className="butir">
+          <div className="judul-butir">
+            <b id="label-tidur">Durasi tidur semalam</b>
+            <span className="anchor">Naik-turun per 30 menit</span>
+          </div>
+          <div className="stepper" role="group" aria-labelledby="label-tidur">
+            <button
+              type="button"
+              aria-label="Kurangi 30 menit"
+              onClick={() => setItem("durasiTidurJam", Math.max(0, isian.items.durasiTidurJam - 0.5))}
+            >
+              −
+            </button>
+            <output aria-live="polite">
+              {fmtAngka(isian.items.durasiTidurJam, 1)}
+              <small>jam</small>
+            </output>
+            <button
+              type="button"
+              aria-label="Tambah 30 menit"
+              onClick={() => setItem("durasiTidurJam", Math.min(24, isian.items.durasiTidurJam + 0.5))}
+            >
+              +
+            </button>
+          </div>
+        </div>
+        <div className="butir">
+          <div className="judul-butir">
+            <b id="label-layar">Screen time kemarin</b>
+            <span className="anchor">Total jam di depan layar, termasuk latihan</span>
+          </div>
+          <div className="stepper" role="group" aria-labelledby="label-layar">
+            <button
+              type="button"
+              aria-label="Kurangi 30 menit"
+              onClick={() => setIsian((s) => ({ ...s, screenTimeJamKemarin: Math.max(0, s.screenTimeJamKemarin - 0.5) }))}
+            >
+              −
+            </button>
+            <output aria-live="polite">
+              {fmtAngka(isian.screenTimeJamKemarin, 1)}
+              <small>jam</small>
+            </output>
+            <button
+              type="button"
+              aria-label="Tambah 30 menit"
+              onClick={() => setIsian((s) => ({ ...s, screenTimeJamKemarin: Math.min(24, s.screenTimeJamKemarin + 0.5) }))}
+            >
+              +
+            </button>
+          </div>
+        </div>
         {BUTIR.map((b) => (
           <div className="butir" key={b.key}>
-            <span>{b.label}</span>
-            <Skala label={b.label} nilai={isian.items[b.key]} dari={1} sampai={5} ubah={(n) => setItem(b.key, n)} />
-            <div className="anchor">
-              <span>1 = {b.rendah}</span>
-              <span>5 = {b.tinggi}</span>
+            <div className="judul-butir">
+              <b>{b.label}</b>
+              <span className="anchor">
+                1 = {b.rendah}, 5 = {b.tinggi}
+              </span>
             </div>
+            <Skala label={b.label} nilai={isian.items[b.key]} dari={1} sampai={5} ubah={(n) => setItem(b.key, n)} />
           </div>
         ))}
       </div>
 
       <div className="stack" style={{ gap: 6 }}>
-        <h3>Peta nyeri (0 = tidak nyeri, 10 = sangat nyeri)</h3>
+        <h3>Peta nyeri</h3>
+        <span className="muted kecil">0 = tidak nyeri, 10 = sangat nyeri</span>
         <div className="nyeri">
           {AREA_NYERI.map((a) => (
             <label key={a}>
@@ -294,15 +342,18 @@ function FormCheckIn() {
         <textarea value={isian.catatanBebas ?? ""} onChange={(e) => setIsian((s) => ({ ...s, catatanBebas: e.target.value }))} />
       </label>
 
-      <div className="row">
-        <button className="btn utama" type="submit">
+      <div className="stack" style={{ gap: 8 }}>
+        <button className="btn utama lebar" type="submit">
           {mengubah ? "Simpan perubahan" : "Kirim check-in"}
         </button>
         {mengubah && (
-          <button type="button" className="btn" onClick={() => setMengubah(false)}>
+          <button type="button" className="btn lebar" onClick={() => setMengubah(false)}>
             Batal
           </button>
         )}
+        <p className="muted kecil" style={{ textAlign: "center" }}>
+          Check-in bisa diubah sampai Sesi pertama hari ini dimulai.
+        </p>
       </div>
       <Pesan umpan={umpan} />
     </form>
