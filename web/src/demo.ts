@@ -1,0 +1,331 @@
+import type { Actor, CheckInItems, CommandResult, JenisSesi, Membership, PetaNyeri } from "../../src/index.js";
+import { MemoryNotificationPort, MemoryStorage, MonitoringService } from "../../src/index.js";
+import { tambahHari, tanggalDiZona } from "../../src/domain/tanggal.js";
+import type { Clock } from "../../src/ports/clock.js";
+
+/**
+ * Data demo untuk prototipe UI. Belum ada HTTP API maupun penyimpanan
+ * persisten, jadi Layanan Monitoring berjalan langsung di browser dengan
+ * penyimpanan memori, dan riwayat 3 minggu diisi ulang setiap halaman dimuat.
+ */
+
+export const TEAM_ID = "mlbb";
+export const TIMEZONE = "Asia/Jakarta";
+
+/** Jam yang bisa dibekukan selama pengisian riwayat, lalu berjalan mengikuti waktu nyata. */
+class DemoClock implements Clock {
+  fixed: string | null = null;
+  nowISO(): string {
+    return this.fixed ?? new Date().toISOString();
+  }
+}
+
+/** Nama tampilan. Tahap 1 belum punya profil pengguna, jadi userId dipetakan di sini. */
+export const NAMA: Record<string, string> = {
+  rina: "Rina Kusuma",
+  budi: "Budi Hartono",
+  sari: "Sari Lestari",
+  dimas: "Dimas Ardi",
+  raka: "Raka Pratama",
+  fajar: "Fajar Nugroho",
+  yoga: "Yoga Saputra",
+  dinda: "Dinda Maharani",
+  bima: "Bima Santoso",
+  kevin: "Kevin Wijaya",
+  wali_dinda: "Ibu Dinda (wali)",
+};
+
+export function namaPengguna(userId: string): string {
+  return NAMA[userId] ?? userId;
+}
+
+export function wib(tanggal: string, jam: string): string {
+  return new Date(`${tanggal}T${jam}:00+07:00`).toISOString();
+}
+
+export function hariIniTim(): string {
+  return tanggalDiZona(new Date().toISOString(), TIMEZONE);
+}
+
+/** PRNG kecil berbenih agar data demo sama setiap kali dimuat. */
+function mulberry32(seed: number) {
+  let a = seed;
+  return () => {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function wajib<T>(r: CommandResult<T>): T {
+  if (!r.ok) throw new Error(`Data demo gagal dibuat: ${r.reason}`);
+  return r.data;
+}
+
+const TANPA_NYERI: PetaNyeri = {
+  leher: 0,
+  bahu: 0,
+  punggungAtas: 0,
+  punggungBawah: 0,
+  pergelangan: 0,
+  tangan: 0,
+  jariKiri: 0,
+  jariKanan: 0,
+};
+
+interface ProfilAtlet {
+  id: string;
+  tanggalLahir: string;
+  wali?: string;
+  /** Berapa hari lalu Atlet bergabung. */
+  bergabung: number;
+  /** Isian hari ini; null berarti belum Check-in. */
+  hariIni: { wellness: number[]; tidur: number; kualitas: number; nyeri?: Partial<PetaNyeri> } | null;
+  nyeriKronis?: Partial<PetaNyeri>;
+}
+
+const PROFIL: ProfilAtlet[] = [
+  { id: "raka", tanggalLahir: "2003-04-11", bergabung: 21, hariIni: null },
+  {
+    id: "fajar",
+    tanggalLahir: "2002-09-02",
+    bergabung: 21,
+    hariIni: { wellness: [2, 2, 3, 2, 2, 3], tidur: 5, kualitas: 2, nyeri: { pergelangan: 5, tangan: 3 } },
+    nyeriKronis: { pergelangan: 2 },
+  },
+  {
+    id: "yoga",
+    tanggalLahir: "2004-01-23",
+    bergabung: 21,
+    hariIni: { wellness: [3, 3, 4, 3, 3, 4], tidur: 6.5, kualitas: 3 },
+  },
+  {
+    id: "dinda",
+    tanggalLahir: "2010-05-12",
+    wali: "wali_dinda",
+    bergabung: 21,
+    hariIni: { wellness: [4, 4, 5, 4, 4, 5], tidur: 8, kualitas: 4 },
+  },
+  {
+    id: "bima",
+    tanggalLahir: "2001-12-30",
+    bergabung: 21,
+    hariIni: { wellness: [4, 4, 4, 4, 5, 4], tidur: 7.5, kualitas: 4 },
+  },
+  {
+    id: "kevin",
+    tanggalLahir: "2005-07-08",
+    bergabung: 4,
+    hariIni: { wellness: [4, 3, 4, 4, 4, 4], tidur: 7, kualitas: 4 },
+  },
+];
+
+const JENIS_ACAK: JenisSesi[] = ["scrim", "scrim", "ranked", "individu", "review_vod", "pertandingan"];
+
+export interface Demo {
+  svc: MonitoringService;
+  manajer: Actor;
+  /** Semua anggota Tim, dipakai sebagai daftar "Masuk sebagai". */
+  daftarPersona(): Actor[];
+}
+
+export function buatDemo(): Demo {
+  const storage = new MemoryStorage();
+  const clock = new DemoClock();
+  const svc = new MonitoringService(storage, clock, new MemoryNotificationPort());
+  const rand = mulberry32(2026);
+  const acak = (min: number, max: number) => min + Math.floor(rand() * (max - min + 1));
+
+  const hariIni = hariIniTim();
+  const awal = tambahHari(hariIni, -22);
+  clock.fixed = wib(awal, "09:00");
+
+  svc.buatTim({ id: TEAM_ID, nama: "Divisi MLBB", divisi: "Mobile Legends", timezone: TIMEZONE });
+  wajib(svc.daftarkanManajerAwal({ userId: "rina", teamId: TEAM_ID }));
+  const manajer: Actor = { userId: "rina", teamId: TEAM_ID, peran: "manajer_tim" };
+  wajib(svc.undangAnggota(manajer, { userId: "budi", peran: "staf_pelatih" }));
+  wajib(svc.undangAnggota(manajer, { userId: "sari", peran: "tim_support", subPeran: "fisioterapis" }));
+  wajib(svc.undangAnggota(manajer, { userId: "dimas", peran: "tim_support", subPeran: "psikolog" }));
+  const pelatih: Actor = { userId: "budi", teamId: TEAM_ID, peran: "staf_pelatih" };
+  const fisio: Actor = { userId: "sari", teamId: TEAM_ID, peran: "tim_support", subPeran: "fisioterapis" };
+  const psikolog: Actor = { userId: "dimas", teamId: TEAM_ID, peran: "tim_support", subPeran: "psikolog" };
+  const atlet = (id: string): Actor => ({ userId: id, teamId: TEAM_ID, peran: "atlet", athleteId: id });
+
+  for (const p of PROFIL) {
+    const tglGabung = tambahHari(hariIni, -p.bergabung);
+    clock.fixed = wib(tglGabung, "07:00");
+    wajib(
+      svc.daftarkanAtlet(manajer, {
+        athleteId: p.id,
+        nama: NAMA[p.id]!,
+        tanggalLahir: p.tanggalLahir,
+        guardianUserId: p.wali,
+      })
+    );
+    wajib(svc.berikanPersetujuan(atlet(p.id), { jenis: "kuesioner" }));
+    if (p.wali) wajib(svc.setujuiSebagaiWali({ athleteId: p.id, guardianUserId: p.wali }));
+  }
+
+  const butirAcak = (dasar: number): number => Math.max(1, Math.min(5, dasar + acak(-1, 1)));
+
+  // Riwayat: Check-in pagi dan satu Sesi siang per hari, kecuali hari istirahat.
+  for (let mundur = 21; mundur >= 1; mundur--) {
+    const tanggal = tambahHari(hariIni, -mundur);
+    const istirahat = mundur % 7 === 3;
+    for (const p of PROFIL) {
+      if (mundur > p.bergabung) continue;
+      clock.fixed = wib(tanggal, "08:00");
+      const dasar = rand() < 0.7 ? 4 : 3;
+      const items: CheckInItems = {
+        durasiTidurJam: 6 + acak(0, 5) * 0.5,
+        kualitasTidur: acak(3, 5),
+        kelelahanUmum: butirAcak(dasar),
+        kelelahanMata: butirAcak(dasar),
+        sakitKepala: butirAcak(dasar + 1),
+        stres: butirAcak(dasar),
+        mood: butirAcak(dasar),
+        motivasiBerlatih: butirAcak(dasar),
+      };
+      wajib(
+        svc.kirimCheckIn(atlet(p.id), {
+          items,
+          petaNyeri: { ...TANPA_NYERI, ...(p.nyeriKronis ?? {}) },
+          screenTimeJamKemarin: acak(7, 12),
+        })
+      );
+      if (istirahat) continue;
+      clock.fixed = wib(tanggal, "17:30");
+      wajib(
+        svc.catatSesi(atlet(p.id), {
+          jenis: JENIS_ACAK[acak(0, JENIS_ACAK.length - 1)]!,
+          durasiMenit: acak(6, 12) * 15,
+          mulaiAt: wib(tanggal, "14:00"),
+          selesaiAt: wib(tanggal, "16:30"),
+          rpeAktual: acak(4, 8),
+        })
+      );
+    }
+  }
+
+  const kemarin = tambahHari(hariIni, -1);
+
+  // Kemarin malam: scrim terjadwal untuk Raka yang RPE-nya belum diisi.
+  clock.fixed = wib(kemarin, "12:00");
+  wajib(
+    svc.jadwalkanSesi(pelatih, {
+      athleteId: "raka",
+      jenis: "scrim",
+      durasiMenit: 150,
+      mulaiAt: wib(kemarin, "19:00"),
+      rpeRencana: 7,
+    })
+  );
+
+  // Catatan dan Thread kemarin malam.
+  clock.fixed = wib(kemarin, "20:15");
+  const catatanFajar = wajib(
+    svc.tulisCatatan(pelatih, {
+      athleteId: "fajar",
+      body: "Fajar mengeluh pergelangan kanan pegal setelah scrim panjang. @sari mohon dicek sebelum latihan besok.",
+      visibilitas: "staf",
+      kategori: ["fisik"],
+    })
+  );
+  wajib(
+    svc.buatTindakLanjut(pelatih, { catatanId: catatanFajar.id, ownerId: "sari", tenggat: tambahHari(hariIni, 1) })
+  );
+  clock.fixed = wib(kemarin, "21:00");
+  wajib(svc.balasThread(fisio, { catatanId: catatanFajar.id, body: "Siap, besok pagi saya asesmen sebelum scrim." }));
+  wajib(
+    svc.tulisCatatan(pelatih, {
+      athleteId: "raka",
+      body: "Rotasi early game di scrim kemarin jauh lebih rapi. Pertahankan komunikasi dengan jungler.",
+      visibilitas: "bersama_atlet",
+      kategori: ["taktik"],
+    })
+  );
+  wajib(
+    svc.tulisCatatan(psikolog, {
+      athleteId: "yoga",
+      body: "Yoga terlihat tegang menjelang final regional. @budi mohon kurangi review VOD malam minggu ini.",
+      visibilitas: "staf",
+      kategori: ["mental"],
+    })
+  );
+  wajib(
+    svc.tulisCatatan(psikolog, {
+      body: "Sesi mental kelompok dijadwalkan Kamis pukul 16.00 di ruang briefing.",
+      visibilitas: "staf",
+      kategori: ["mental", "logistik"],
+    })
+  );
+
+  // Pagi ini: Check-in semua Atlet kecuali Raka.
+  const sekarang = Date.now();
+  const pagiIni = Math.min(new Date(wib(hariIni, "08:00")).getTime(), sekarang - 10 * 60_000);
+  clock.fixed = new Date(Math.max(pagiIni, new Date(wib(hariIni, "00:05")).getTime())).toISOString();
+  for (const p of PROFIL) {
+    if (!p.hariIni) continue;
+    const [kelelahanUmum, kelelahanMata, sakitKepala, stres, mood, motivasiBerlatih] = p.hariIni.wellness as [
+      number,
+      number,
+      number,
+      number,
+      number,
+      number,
+    ];
+    wajib(
+      svc.kirimCheckIn(atlet(p.id), {
+        items: {
+          durasiTidurJam: p.hariIni.tidur,
+          kualitasTidur: p.hariIni.kualitas,
+          kelelahanUmum,
+          kelelahanMata,
+          sakitKepala,
+          stres,
+          mood,
+          motivasiBerlatih,
+        },
+        petaNyeri: { ...TANPA_NYERI, ...(p.nyeriKronis ?? {}), ...(p.hariIni.nyeri ?? {}) },
+        screenTimeJamKemarin: acak(8, 12),
+        catatanBebas: p.id === "fajar" ? "Pergelangan kanan makin nyeri waktu klik cepat." : undefined,
+      })
+    );
+  }
+  wajib(
+    svc.tulisCatatan(fisio, {
+      athleteId: "fajar",
+      body: "Asesmen awal: indikasi tendinopati ringan pergelangan kanan. Batasi ranked solo 2 hari, peregangan fleksor tiap jeda.",
+      visibilitas: "klinis",
+      kategori: ["medis"],
+    })
+  );
+
+  // Scrim sore ini, dijadwalkan cukup jauh ke depan agar Check-in Raka belum terkunci.
+  const mulaiScrim = new Date(Math.ceil((sekarang + 2 * 3600_000) / 3600_000) * 3600_000).toISOString();
+  for (const p of PROFIL) {
+    wajib(svc.jadwalkanSesi(pelatih, { athleteId: p.id, jenis: "scrim", durasiMenit: 120, mulaiAt: mulaiScrim, rpeRencana: 6 }));
+  }
+
+  clock.fixed = null;
+
+  return {
+    svc,
+    manajer,
+    daftarPersona() {
+      const r = svc.anggotaTim(manajer);
+      if (!r.ok) return [];
+      const arsip = new Set(r.data.atlet.filter((a) => a.archived).map((a) => a.id));
+      return r.data.anggota
+        .filter((m) => !arsip.has(m.userId))
+        .map((m: Membership): Actor => ({ ...m }))
+        .sort((a, b) => urutanPeran(a) - urutanPeran(b) || namaPengguna(a.userId).localeCompare(namaPengguna(b.userId)));
+    },
+  };
+}
+
+function urutanPeran(a: Actor): number {
+  return { staf_pelatih: 0, tim_support: 1, atlet: 2, manajer_tim: 3 }[a.peran];
+}
