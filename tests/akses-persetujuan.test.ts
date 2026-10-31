@@ -165,9 +165,9 @@ describe("Akses dan Visibilitas", () => {
     ditolak(d.svc.linimasaAtlet(pelatihTimLain, RENTANG), /tidak ditemukan/);
   });
 
-  it("hanya Manajer Tim yang bisa mengundang anggota dan mengubah peran", () => {
+  it("hanya Super admin atau Admin yang bisa mengundang anggota dan mengubah peran", () => {
     const d = siapkanTim();
-    ditolak(d.svc.undangAnggota(d.pelatih, { userId: "x", peran: "staf_pelatih" }), /tidak berwenang/);
+    ditolak(d.svc.undangAnggota(d.pelatih, { userId: "x", peran: "staf_pelatih" }), /Super admin/);
     data(d.svc.ubahPeran(d.manajer, { userId: "psikolog", peran: "staf_pelatih" }));
     ditolak(d.svc.ubahPeran(d.manajer, { userId: "tidak_ada", peran: "staf_pelatih" }), /tidak ditemukan/);
   });

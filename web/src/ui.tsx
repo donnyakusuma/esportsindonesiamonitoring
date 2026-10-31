@@ -1,4 +1,4 @@
-import { createContext, type ReactNode, useContext, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import type {
   Actor,
   CommandResult,
@@ -28,8 +28,10 @@ export interface AppCtx {
   /** Kelompok milik tiap Atlet (athleteId -> kelompok). */
   kelompokAtlet: Map<string, string>;
   pilihKelompok(k: string): void;
-  /** Akun masuk atlet; dikelola Manajer Tim lewat form profil atlet. */
+  /** Akun masuk atlet dan staf; dikelola Super admin atau Admin lewat form profil. */
   akun: AkunStore;
+  /** True bila Aktor adalah Super admin (Manajer Tim) atau staf berstatus Admin. */
+  kontrol: boolean;
 }
 
 export const AppContext = createContext<AppCtx | null>(null);
@@ -55,6 +57,12 @@ export const SUBPERAN_LABEL: Record<SubPeranTimSupport, string> = {
   dokter_tim: "Dokter Tim",
   nutrisionis: "Nutrisionis",
 };
+
+/** "Super admin" untuk Manajer Tim, "Admin" untuk staf berstatus Admin, selain itu kosong. */
+export function labelOtoritas(m: { peran: Peran; admin?: boolean }): string {
+  if (m.peran === "manajer_tim") return "Super admin";
+  return m.admin ? "Admin" : "";
+}
 
 export function labelPeran(a: { peran: Peran; subPeran?: SubPeranTimSupport }): string {
   return a.subPeran ? `${PERAN_LABEL[a.peran]} · ${SUBPERAN_LABEL[a.subPeran]}` : PERAN_LABEL[a.peran];
@@ -121,12 +129,12 @@ export function StatusBadge({ status }: { status: StatusReadiness }) {
 
 // ───────────────────────── Ikon ─────────────────────────
 
+/** Lambang Esports Indonesia (garuda) di atas kotak putih, untuk sidebar dan ukuran kecil. */
 export function Logo({ ukuran }: { ukuran: number }) {
   return (
-    <svg width={ukuran} height={ukuran} viewBox="0 0 64 64" aria-hidden>
-      <rect width="64" height="64" rx="12" fill="#CE1126" />
-      <path d="M12 38h10l6-16 7 25 6-16h11" fill="none" stroke="#FFFFFF" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <span className="logo-lambang" style={{ width: ukuran, height: ukuran }}>
+      <img src="/logo-esi-lambang.png" alt="" width={ukuran} height={ukuran} />
+    </span>
   );
 }
 
@@ -349,6 +357,22 @@ export function TeksSebutan({ teks }: { teks: string }) {
         )
       )}
     </>
+  );
+}
+
+/** Jendela popup: Esc atau klik latar menutup. */
+export function Jendela({ judul, tutup, children }: { judul: string; tutup(): void; children: ReactNode }) {
+  useEffect(() => {
+    const tombol = (e: KeyboardEvent) => e.key === "Escape" && tutup();
+    document.addEventListener("keydown", tombol);
+    return () => document.removeEventListener("keydown", tombol);
+  }, [tutup]);
+  return (
+    <div className="jendela-latar" onMouseDown={(e) => e.target === e.currentTarget && tutup()}>
+      <div className="jendela card" role="dialog" aria-modal="true" aria-label={judul}>
+        {children}
+      </div>
+    </div>
   );
 }
 

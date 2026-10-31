@@ -5,7 +5,7 @@ import { Masuk, type Sebagai } from "./Masuk.js";
 import { HalamanAtlet, MENU_ATLET } from "./pages/atlet.js";
 import { HalamanManajer, MENU_MANAJER } from "./pages/manajer.js";
 import { HalamanStaf, hitungKotakMasuk, MENU_STAF } from "./pages/staf.js";
-import { type AppCtx, AppContext, fmtTanggal, Ikon, inisial, labelPeran, Logo } from "./ui.js";
+import { type AppCtx, AppContext, fmtTanggal, Ikon, inisial, labelOtoritas, labelPeran, Logo } from "./ui.js";
 
 const IKON_MENU: Record<string, string> = {
   hari_ini: "check",
@@ -35,21 +35,22 @@ function halamanAwal(a: Actor): Halaman {
 
 const KUNCI_SESI = "readiness-masuk";
 
-/** Siapa yang sedang masuk: "admin" (semua persona) atau satu atlet (hanya dirinya). */
+/** Siapa yang sedang masuk: "admin" (semua persona) atau satu akun (hanya dirinya). */
 function bacaSesi(): Sebagai | null {
   const mentah = sessionStorage.getItem(KUNCI_SESI);
   if (mentah === "1" || mentah === "admin") return "admin";
-  if (mentah?.startsWith("atlet:")) return { athleteId: mentah.slice(6) };
+  if (mentah?.startsWith("akun:")) return { userId: mentah.slice(5) };
   return null;
 }
 
 export function App() {
   // Data demo dibuat sekali per muat halaman, jadi tetap ada setelah keluar lalu masuk lagi.
   const demo = useMemo(buatDemo, []);
+  const aktif = (userId: string) => demo.daftarPersona().some((p) => p.userId === userId);
   const [sesi, setSesi] = useState<Sebagai | null>(() => {
     const s = bacaSesi();
-    // Akun atlet yang dibuat sebelum muat ulang hilang bersama data demo.
-    return s && s !== "admin" && !demo.daftarPersona().some((p) => p.userId === s.athleteId) ? null : s;
+    // Akun yang dibuat sebelum muat ulang hilang bersama data demo.
+    return s && s !== "admin" && !aktif(s.userId) ? null : s;
   });
 
   if (!sesi) {
@@ -57,14 +58,15 @@ export function App() {
       <Masuk
         periksa={(user, sandi) => {
           const h = demo.akun.periksa(user, sandi);
-          if (h.ok && h.sebagai !== "admin") {
-            const aktif = demo.daftarPersona().some((p) => p.userId === (h.sebagai as { athleteId: string }).athleteId);
-            if (!aktif) return { ok: false, alasan: "Akun atlet ini diarsipkan dan tidak bisa masuk." };
+          if (h.ok && h.sebagai !== "admin" && !aktif(h.sebagai.userId)) {
+            const r = demo.svc.anggotaTim(demo.manajer);
+            const arsip = r.ok && r.data.atlet.some((a) => a.id === (h.sebagai as { userId: string }).userId && a.archived);
+            return { ok: false, alasan: arsip ? "Akun atlet ini diarsipkan dan tidak bisa masuk." : "Akun ini sudah tidak aktif." };
           }
           return h;
         }}
         masuk={(sebagai) => {
-          sessionStorage.setItem(KUNCI_SESI, sebagai === "admin" ? "admin" : `atlet:${sebagai.athleteId}`);
+          sessionStorage.setItem(KUNCI_SESI, sebagai === "admin" ? "admin" : `akun:${sebagai.userId}`);
           setSesi(sebagai);
         }}
       />
@@ -73,7 +75,7 @@ export function App() {
   return (
     <Aplikasi
       demo={demo}
-      terkunci={sesi === "admin" ? null : sesi.athleteId}
+      terkunci={sesi === "admin" ? null : sesi.userId}
       keluar={() => {
         sessionStorage.removeItem(KUNCI_SESI);
         setSesi(null);
@@ -94,8 +96,9 @@ function Aplikasi({ demo, terkunci, keluar }: { demo: ReturnType<typeof buatDemo
   const { namaAtlet, kelompokAtlet, daftarKelompok } = useMemo(() => {
     const r = demo.svc.anggotaTim(demo.manajer);
     const atlet = r.ok ? r.data.atlet : [];
+    const staf = r.ok ? r.data.anggota.filter((m) => m.nama) : [];
     return {
-      namaAtlet: new Map(atlet.map((a) => [a.id, a.nama])),
+      namaAtlet: new Map([...staf.map((m) => [m.userId, m.nama!] as [string, string]), ...atlet.map((a) => [a.id, a.nama] as [string, string])]),
       kelompokAtlet: new Map(atlet.flatMap((a) => (a.kelompok ? [[a.id, a.kelompok] as [string, string]] : []))),
       daftarKelompok: [...new Set(atlet.filter((a) => !a.archived && a.kelompok).map((a) => a.kelompok!))].sort((a, b) => a.localeCompare(b)),
     };
@@ -117,6 +120,7 @@ function Aplikasi({ demo, terkunci, keluar }: { demo: ReturnType<typeof buatDemo
     kelompokAtlet,
     pilihKelompok: setPilihan,
     akun: demo.akun,
+    kontrol: demo.svc.punyaKontrol(actor),
   };
 
   function gantiPersona(id: string) {
@@ -127,13 +131,14 @@ function Aplikasi({ demo, terkunci, keluar }: { demo: ReturnType<typeof buatDemo
   }
 
   const kotakMasuk = halaman.peran === "staf" ? hitungKotakMasuk(ctx) : 0;
+  const otoritas = labelOtoritas({ peran: actor.peran, admin: ctx.kontrol && actor.peran !== "manajer_tim" });
 
   return (
     <AppContext.Provider value={ctx}>
       <div className="app">
         <aside className="side">
           <div className="brand">
-            <Logo ukuran={36} />
+            <Logo ukuran={44} />
             <div>
               <b>Esports Indonesia</b>
               <span>Prototipe · Tahap 1</span>
@@ -161,7 +166,7 @@ function Aplikasi({ demo, terkunci, keluar }: { demo: ReturnType<typeof buatDemo
                 </button>
               ))}
             {halaman.peran === "staf" &&
-              MENU_STAF.map((m) => {
+              MENU_STAF.filter((m) => !m.kontrol || ctx.kontrol).map((m) => {
                 const aktif = halaman.h.id === m.id || (m.id === "papan" && halaman.h.id === "atlet");
                 return (
                   <button
@@ -207,7 +212,10 @@ function Aplikasi({ demo, terkunci, keluar }: { demo: ReturnType<typeof buatDemo
               <span className="avatar">{inisial(ctx.nama(actor.userId))}</span>
               <div>
                 <b>{ctx.nama(actor.userId)}</b>
-                <div className="kecil">{labelPeran(actor)}</div>
+                <div className="kecil">
+                  {labelPeran(actor)}
+                  {otoritas && <span className={`lencana-otoritas ${actor.peran === "manajer_tim" ? "super" : ""}`}>{otoritas}</span>}
+                </div>
               </div>
             </div>
             <button className="keluar" onClick={keluar}>

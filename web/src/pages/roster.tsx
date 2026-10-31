@@ -1,11 +1,12 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { useState } from "react";
 import type { Athlete, JenisKelamin } from "../../../src/index.js";
 import { usiaPadaTanggal } from "../../../src/modules/akses.js";
-import { fmtTanggal, Info, inisial, Pesan, useAksi, useApp } from "../ui.js";
+import { fmtTanggal, Info, inisial, Jendela, Pesan, useAksi, useApp } from "../ui.js";
 
 /**
  * Daftar Atlet terdaftar beserta profilnya. Semua staf bisa melihat; hanya
- * Manajer Tim yang bisa menambah, mengubah, dan mengarsipkan (sesuai PRD).
+ * Super admin (Manajer Tim) dan staf berstatus Admin yang bisa menambah,
+ * mengubah, mengarsipkan, dan menghapus.
  */
 
 export const JENIS_KELAMIN_LABEL: Record<JenisKelamin, string> = {
@@ -17,12 +18,12 @@ type Filter = "semua" | "aktif" | "arsip";
 type Panel = { mode: "edit"; id: string } | { mode: "tambah" } | null;
 
 export function DaftarAtlet({ bukaReadiness }: { bukaReadiness?(athleteId: string): void }) {
-  const { svc, actor, hariIni, kelompok, akun } = useApp();
+  const { svc, actor, hariIni, kelompok, akun, kontrol } = useApp();
   const aksi = useAksi();
   const [cari, setCari] = useState("");
   const [filter, setFilter] = useState<Filter>("aktif");
   const [panel, setPanel] = useState<Panel>(null);
-  const bisaUbah = actor.peran === "manajer_tim";
+  const bisaUbah = kontrol;
 
   const r = svc.anggotaTim(actor);
   if (!r.ok) return <Pesan umpan={{ jenis: "gagal", teks: r.reason }} />;
@@ -76,7 +77,7 @@ export function DaftarAtlet({ bukaReadiness }: { bukaReadiness?(athleteId: strin
         </div>
       </div>
 
-      {!bisaUbah && <Info>Hanya Manajer Tim yang bisa menambah, mengubah, mengarsipkan, atau menghapus atlet.</Info>}
+      {!bisaUbah && <Info>Hanya Super admin (Manajer Tim) atau anggota berstatus Admin yang bisa menambah, mengubah, mengarsipkan, atau menghapus atlet.</Info>}
       <Pesan umpan={aksi.umpan} />
 
       <div className="pil-grup" role="group" aria-label="Filter status">
@@ -212,22 +213,6 @@ export function DaftarAtlet({ bukaReadiness }: { bukaReadiness?(athleteId: strin
         </Jendela>
       )}
     </>
-  );
-}
-
-/** Jendela popup: Esc atau klik latar menutup; fokus awal ke isian pertama. */
-function Jendela({ judul, tutup, children }: { judul: string; tutup(): void; children: ReactNode }) {
-  useEffect(() => {
-    const tombol = (e: KeyboardEvent) => e.key === "Escape" && tutup();
-    document.addEventListener("keydown", tombol);
-    return () => document.removeEventListener("keydown", tombol);
-  }, [tutup]);
-  return (
-    <div className="jendela-latar" onMouseDown={(e) => e.target === e.currentTarget && tutup()}>
-      <div className="jendela card" role="dialog" aria-modal="true" aria-label={judul}>
-        {children}
-      </div>
-    </div>
   );
 }
 

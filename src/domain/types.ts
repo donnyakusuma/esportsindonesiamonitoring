@@ -53,6 +53,13 @@ export interface Membership {
   peran: Peran;
   subPeran?: SubPeranTimSupport;
   athleteId?: string;
+  /** Nama tampilan anggota staf. Nama Atlet disimpan di profil Atlet. */
+  nama?: string;
+  /**
+   * Status Admin: staf yang diberi otoritas kontrol yang sama dengan Super
+   * admin (Manajer Tim), yaitu mengelola Atlet, anggota, dan membaca Log Audit.
+   */
+  admin?: boolean;
 }
 
 export type JenisPersetujuan = "kuesioner" | "tes_reaksi" | "wearable";
@@ -173,6 +180,36 @@ export interface DailyScore {
   configUsed: ScoreConfig;
   computedAt: string;
   statusReason: string;
+}
+
+/**
+ * Ringkasan harian dari perangkat wearable (Garmin Connect). Satu baris per
+ * Atlet per tanggal. Field bernilai null bila perangkat tidak mengirim metrik
+ * itu hari itu, mis. komposisi tubuh hanya saat atlet menimbang badan.
+ */
+export interface DataWearable {
+  athleteId: string;
+  tanggal: string; // YYYY-MM-DD
+  sumber: "garmin";
+  langkah: number | null;
+  menitIntensitas: number | null;
+  tidur: { durasiMenit: number; skor: number | null } | null;
+  /** Total kalori terbakar (aktif + istirahat), kkal. */
+  kalori: number | null;
+  /** Denyut per menit. */
+  detakJantung: { istirahat: number; rataRata: number; maks: number } | null;
+  /** Rata-rata tingkat stres harian 0-100. */
+  stres: number | null;
+  /** Rata-rata saturasi oksigen (Pulse Ox), persen. */
+  spo2: number | null;
+  /** Body Battery 0-100: tertinggi (biasanya saat bangun) dan terendah hari itu. */
+  bodyBattery: { tertinggi: number; terendah: number } | null;
+  komposisiTubuh: { beratKg: number; lemakPersen: number } | null;
+  /** Rata-rata laju napas, napas per menit. */
+  respirasi: number | null;
+  /** mmHg. */
+  tekananDarah: { sistolik: number; diastolik: number } | null;
+  diterimaAt: string;
 }
 
 export type Visibilitas = "staf" | "klinis" | "bersama_atlet";

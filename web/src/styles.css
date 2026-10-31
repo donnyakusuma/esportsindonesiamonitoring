@@ -62,6 +62,8 @@ a { color: var(--accent); }
 .kelompok span { font-size: 12px; color: var(--sub); }
 .kelompok select { background: var(--surface); border: 0; border-radius: 8px; min-height: 40px; font-weight: 600; width: 100%; }
 .brand svg { flex: none; }
+.logo-lambang { flex: none; display: inline-grid; place-items: center; background: #fff; border-radius: 10px; overflow: hidden; }
+.logo-lambang img { display: block; width: 100%; height: 100%; object-fit: contain; padding: 3%; }
 .brand b { display: block; font-size: 16px; font-weight: 800; }
 .brand span { display: block; color: var(--sub); font-size: 12px; }
 .nav { display: flex; flex-direction: column; gap: 4px; }
@@ -207,6 +209,35 @@ fieldset.akun-masuk legend { padding: 0 8px; font-weight: 800; }
 fieldset.akun-masuk .hint { color: var(--muted); font-size: 12px; }
 .sandi-baris { display: flex; gap: 8px; }
 .sandi-baris input { flex: 1 1 auto; }
+
+.lencana-otoritas {
+  display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 8px; font-size: 11px; font-weight: 800;
+  background: var(--siap); color: var(--siap-ink); vertical-align: 2px; letter-spacing: 0.02em;
+}
+.lencana-otoritas.super { background: var(--accent); color: var(--accent-ink); }
+.siapa .lencana-otoritas { margin-left: 6px; vertical-align: 0; }
+.centang-admin { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; font-weight: 400; }
+.centang-admin input { margin-top: 2px; flex: none; }
+.centang-admin > span { display: flex; flex-direction: column; gap: 2px; }
+.centang-admin .hint { color: var(--muted); font-size: 12px; }
+
+/* ───────── Data Garmin ───────── */
+
+.garmin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); gap: 12px; }
+.garmin-kartu { background: var(--field); border-radius: 10px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.garmin-kepala { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13px; font-weight: 600; }
+.ikon-garmin { flex: none; color: #fff; }
+.garmin-nilai { font-size: 24px; line-height: 1.1; font-weight: 800; }
+.garmin-nilai small { font-size: 12px; font-weight: 400; color: var(--muted); }
+.garmin-nilai.perhatian, td.perhatian { color: var(--kuning); }
+.garmin-kaki { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 4px 8px; min-height: 26px; }
+.garis { flex: none; }
+.garis-kosong { width: 96px; height: 26px; }
+.ringkas-tim .garmin-kartu { padding: 12px 14px; }
+.tabel-garmin th { vertical-align: bottom; }
+.th-garmin { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 4px; line-height: 1.2; }
+.th-garmin span { max-width: 80px; white-space: normal; text-align: right; }
+.tabel-garmin td { white-space: nowrap; }
 
 /* ───────── Jendela popup ───────── */
 
@@ -360,7 +391,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   display: flex; flex-direction: column; gap: 20px;
 }
 .masuk-kepala { display: flex; flex-direction: column; align-items: center; gap: 12px; padding-bottom: 8px; }
-.masuk-kepala h1 { font-size: 28px; line-height: 1; }
+.masuk-kepala .logo-lengkap { display: block; width: 100%; max-width: 300px; height: auto; }
 .masuk-isian { display: flex; flex-direction: column; gap: 6px; }
 .masuk-isian label { font-size: 15px; font-weight: 600; }
 .masuk input[type="text"], .masuk input[type="password"] {
@@ -392,4 +423,8 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   th:last-child, td:last-child { padding-right: 16px; }
   .top .persona { width: 100%; }
   .top .persona select { max-width: none; flex: 1; }
+  .garmin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .garmin-kartu { padding: 12px; }
+  .garmin-nilai { font-size: 20px; }
+  .garis { width: 72px; }
 }

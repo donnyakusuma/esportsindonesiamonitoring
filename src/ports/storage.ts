@@ -5,6 +5,7 @@ import type {
   CheckIn,
   ConsentRecord,
   DailyScore,
+  DataWearable,
   GuardianApproval,
   Membership,
   Notification,
@@ -33,7 +34,8 @@ export interface StoragePort {
   listAthletesByTeam(teamId: string): Athlete[];
   /**
    * Menghapus permanen seorang Atlet beserta seluruh datanya: keanggotaan,
-   * persetujuan, Check-in, Sesi, Skor Harian, dan Catatan tentang Atlet itu.
+   * persetujuan, Check-in, Sesi, Skor Harian, Data Wearable, dan Catatan
+   * tentang Atlet itu.
    * Log Audit tidak ikut dihapus.
    */
   deleteAthleteCascade(athleteId: string): void;
@@ -75,6 +77,11 @@ export interface StoragePort {
     fromTanggal: string,
     toTanggal: string
   ): DailyScore[];
+
+  // Data wearable
+  getDataWearable(athleteId: string, tanggal: string): DataWearable | undefined;
+  saveDataWearable(d: DataWearable): void;
+  listDataWearableByAthlete(athleteId: string, fromTanggal: string, toTanggal: string): DataWearable[];
 
   // Catatan & Thread
   getCatatan(catatanId: string): Catatan | undefined;

@@ -5,6 +5,7 @@ import type {
   CheckIn,
   ConsentRecord,
   DailyScore,
+  DataWearable,
   GuardianApproval,
   Membership,
   Notification,
@@ -28,6 +29,7 @@ export class MemoryStorage implements StoragePort {
   private checkIns = new Map<string, CheckIn>(); // key `${athleteId}:${tanggal}`
   private sesiList = new Map<string, Sesi>(); // key sesiId
   private dailyScores = new Map<string, DailyScore>(); // key `${athleteId}:${tanggal}`
+  private dataWearable = new Map<string, DataWearable>(); // key `${athleteId}:${tanggal}`
   private catatanList = new Map<string, Catatan>(); // key catatanId
   private threadReplies = new Map<string, ThreadReply[]>(); // key catatanId
   private notifications = new Map<string, Notification[]>(); // key userId
@@ -58,7 +60,7 @@ export class MemoryStorage implements StoragePort {
     this.athletes.delete(athleteId);
     for (const [k, m] of this.memberships) if (m.athleteId === athleteId) this.memberships.delete(k);
     this.guardianApprovals.delete(athleteId);
-    for (const map of [this.consents, this.checkIns, this.dailyScores]) {
+    for (const map of [this.consents, this.checkIns, this.dailyScores, this.dataWearable]) {
       for (const k of map.keys()) if (k.startsWith(`${athleteId}:`)) map.delete(k);
     }
     for (const [k, s] of this.sesiList) if (s.athleteId === athleteId) this.sesiList.delete(k);
@@ -142,6 +144,18 @@ export class MemoryStorage implements StoragePort {
   ): DailyScore[] {
     return [...this.dailyScores.values()]
       .filter((s) => s.athleteId === athleteId && inRange(s.tanggal, fromTanggal, toTanggal))
+      .sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+  }
+
+  getDataWearable(athleteId: string, tanggal: string): DataWearable | undefined {
+    return this.dataWearable.get(`${athleteId}:${tanggal}`);
+  }
+  saveDataWearable(d: DataWearable): void {
+    this.dataWearable.set(`${d.athleteId}:${d.tanggal}`, d);
+  }
+  listDataWearableByAthlete(athleteId: string, fromTanggal: string, toTanggal: string): DataWearable[] {
+    return [...this.dataWearable.values()]
+      .filter((d) => d.athleteId === athleteId && inRange(d.tanggal, fromTanggal, toTanggal))
       .sort((a, b) => a.tanggal.localeCompare(b.tanggal));
   }
 

@@ -1,13 +1,12 @@
 import { useState } from "react";
 import type { HasilMasuk } from "./akun.js";
-import { Logo } from "./ui.js";
 
-export type Sebagai = "admin" | { athleteId: string };
+export type Sebagai = "admin" | { userId: string };
 
 /**
  * Halaman masuk. Prototipe ini belum punya autentikasi sungguhan: akun admin
- * membuka semua persona, sedangkan akun atlet (diatur Manajer Tim di form
- * profil atlet) langsung masuk sebagai atlet itu saja.
+ * membuka semua persona, sedangkan akun atlet dan staf (diatur Super admin
+ * atau Admin di form profil) langsung masuk sebagai pemilik akun itu saja.
  */
 export function Masuk({ periksa, masuk }: { periksa(username: string, password: string): HasilMasuk; masuk(sebagai: Sebagai): void }) {
   const [user, setUser] = useState("");
@@ -34,8 +33,8 @@ export function Masuk({ periksa, masuk }: { periksa(username: string, password: 
         }}
       >
         <div className="masuk-kepala">
-          <Logo ukuran={64} />
-          <h1>Esports Indonesia</h1>
+          <img className="logo-lengkap" src="/logo-esi.png" alt="Esports Federation of Indonesia" />
+          <h1 className="sr-only">Esports Indonesia</h1>
         </div>
 
         <div className="masuk-isian">
@@ -79,7 +78,7 @@ export function Masuk({ periksa, masuk }: { periksa(username: string, password: 
         <button type="submit" className="masuk-tombol">
           Masuk
         </button>
-        <p className="masuk-demo">Akun demo: admin / admin · atlet: raka / raka123</p>
+        <p className="masuk-demo">Akun demo: admin / admin · manajer: rina / rina123 · atlet: raka / raka123</p>
       </form>
     </main>
   );

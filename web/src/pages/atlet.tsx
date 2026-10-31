@@ -3,6 +3,7 @@ import type { CheckInItems, CheckInPayload, JenisPersetujuan, JenisSesi, Kompone
 import { AREA_NYERI, RPE_LABELS } from "../../../src/index.js";
 import { tambahHari } from "../../../src/domain/tanggal.js";
 import { CatatanItem, Linimasa } from "../bersama.js";
+import { KartuGarmin } from "../garmin.js";
 import { TrenChart } from "../TrenChart.js";
 import {
   AREA_NYERI_LABEL,
@@ -73,6 +74,7 @@ function HariIni({ pindah }: { pindah(h: HalamanAtlet): void }) {
   const { svc, actor, hariIni } = useApp();
   const skor = svc.skorHarian(actor, { athleteId: actor.athleteId!, tanggal: hariIni });
   const persetujuan = svc.persetujuanSaya(actor);
+  const garmin = svc.dataWearableAtlet(actor, { athleteId: actor.athleteId!, dari: tambahHari(hariIni, -27), sampai: hariIni });
   const kuesioner = persetujuan.ok ? persetujuan.data.persetujuan.find((p) => p.jenis === "kuesioner") : undefined;
 
   return (
@@ -127,6 +129,21 @@ function HariIni({ pindah }: { pindah(h: HalamanAtlet): void }) {
             <CatatSesiLain />
           </div>
         </div>
+      </div>
+      <div className="card">
+        <div className="card-head">
+          <h2>Kondisi saya</h2>
+          {garmin.ok && !garmin.data.persetujuanBerlaku && (
+            <button className="link kecil" onClick={() => pindah("persetujuan")}>
+              Hubungkan lewat Persetujuan Data
+            </button>
+          )}
+        </div>
+        {garmin.ok ? (
+          <KartuGarmin data={garmin.data.data} tanggal={hariIni} persetujuanBerlaku={garmin.data.persetujuanBerlaku} alasan={garmin.data.alasan} />
+        ) : (
+          <Pesan umpan={{ jenis: "gagal", teks: garmin.reason }} />
+        )}
       </div>
     </>
   );
@@ -554,7 +571,10 @@ const JENIS_PERSETUJUAN: Record<JenisPersetujuan, { label: string; ket: string; 
     ket: "Check-in pagi, RPE sesi, dan skor yang dihitung dari keduanya.",
   },
   tes_reaksi: { label: "Tes reaksi", ket: "Hasil tes waktu reaksi harian.", tahap: "Tersedia di Tahap 2" },
-  wearable: { label: "Data wearable", ket: "HRV, detak jantung istirahat, dan tidur dari perangkat.", tahap: "Tersedia di Tahap 3" },
+  wearable: {
+    label: "Data wearable (Garmin)",
+    ket: "Langkah, tidur, kalori, detak jantung, stres, Pulse Ox, Body Battery, komposisi tubuh, respirasi, dan tekanan darah dari Garmin Connect.",
+  },
 };
 
 function Persetujuan() {

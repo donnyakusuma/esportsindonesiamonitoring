@@ -4,7 +4,9 @@ import { DEFAULT_SCORE_CONFIG } from "../../../src/index.js";
 import { KATEGORI_CATATAN_VALID } from "../../../src/modules/kolaborasi.js";
 import { tambahHari } from "../../../src/domain/tanggal.js";
 import { CatatanItem, Linimasa, TulisCatatan } from "../bersama.js";
+import { GarminTim, KartuGarmin } from "../garmin.js";
 import { TrenChart } from "../TrenChart.js";
+import { Anggota, HalamanLogAudit } from "./manajer.js";
 import { DaftarAtlet } from "./roster.js";
 import {
   CincinReadiness,
@@ -33,15 +35,20 @@ export type HalamanStaf =
   | { id: "catatan" }
   | { id: "sesi" }
   | { id: "kotak_masuk" }
-  | { id: "konfigurasi" };
+  | { id: "konfigurasi" }
+  | { id: "anggota" }
+  | { id: "audit" };
 
-export const MENU_STAF: { id: HalamanStaf["id"]; label: string }[] = [
+/** Item dengan `kontrol` hanya tampil untuk staf berstatus Admin. */
+export const MENU_STAF: { id: HalamanStaf["id"]; label: string; kontrol?: true }[] = [
   { id: "papan", label: "Papan Tim" },
   { id: "roster", label: "Atlet" },
   { id: "catatan", label: "Catatan" },
   { id: "sesi", label: "Jadwalkan Sesi" },
   { id: "kotak_masuk", label: "Kotak Masuk" },
   { id: "konfigurasi", label: "Konfigurasi Skor" },
+  { id: "anggota", label: "Anggota Tim", kontrol: true },
+  { id: "audit", label: "Log Audit", kontrol: true },
 ];
 
 export function HalamanStaf({ halaman, pindah }: { halaman: HalamanStaf; pindah(h: HalamanStaf): void }) {
@@ -60,6 +67,10 @@ export function HalamanStaf({ halaman, pindah }: { halaman: HalamanStaf; pindah(
       return <KotakMasuk />;
     case "konfigurasi":
       return <Konfigurasi />;
+    case "anggota":
+      return <Anggota />;
+    case "audit":
+      return <HalamanLogAudit />;
   }
 }
 
@@ -83,6 +94,7 @@ function PapanTim({ buka }: { buka(athleteId: string): void }) {
   const [tanggal, setTanggal] = useState(hariIni);
   const [pilih, setPilih] = useState<string | null>(null);
   const r = svc.papanTim(actor, { tanggal });
+  const wearable = svc.wearableTim(actor, { tanggal });
   const info = svc.infoTim(actor);
   const baris: BarisPapanTim[] = r.ok ? r.data.filter((b) => !kelompok || kelompokAtlet.get(b.athleteId) === kelompok) : [];
   const dengan = (s: StatusReadiness) => baris.filter((b) => b.status === s);
@@ -280,6 +292,17 @@ function PapanTim({ buka }: { buka(athleteId: string): void }) {
           )}
         </aside>
       </div>
+
+      <div className="card">
+        <div className="card-head">
+          <h2>Kondisi Atlet</h2>
+          <span className="muted kecil">Klik baris untuk membuka profil atlet</span>
+        </div>
+        <GarminTim
+          baris={wearable.ok ? wearable.data.filter((b) => !kelompok || kelompokAtlet.get(b.athleteId) === kelompok) : []}
+          buka={buka}
+        />
+      </div>
     </>
   );
 }
@@ -367,6 +390,7 @@ function DetailAtlet({ athleteId, kembali }: { athleteId: string; kembali(): voi
   const info = svc.infoTim(actor);
   const skor = svc.skorHarian(actor, { athleteId, tanggal: hariIni });
   const catatan = svc.cariCatatan(actor, { athleteId });
+  const garmin = svc.dataWearableAtlet(actor, { athleteId, dari, sampai: hariIni });
 
   return (
     <>
@@ -457,6 +481,15 @@ function DetailAtlet({ athleteId, kembali }: { athleteId: string; kembali(): voi
             terakhir.
           </p>
         </div>
+      </div>
+
+      <div className="card">
+        <h2>Kondisi Atlet</h2>
+        {garmin.ok ? (
+          <KartuGarmin data={garmin.data.data} tanggal={hariIni} persetujuanBerlaku={garmin.data.persetujuanBerlaku} alasan={garmin.data.alasan} />
+        ) : (
+          <Pesan umpan={{ jenis: "gagal", teks: garmin.reason }} />
+        )}
       </div>
 
       <div className="card stack">

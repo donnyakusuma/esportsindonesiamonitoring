@@ -9,6 +9,7 @@ import type {
   CheckInVersion,
   ConsentRecord,
   DailyScore,
+  DataWearable,
   GuardianApproval,
   JenisPersetujuan,
   JenisSesi,
@@ -76,6 +77,40 @@ export interface BarisPapanTim {
   readiness: number | null;
   wellnessScore: number | null;
   komponen: DailyScore["komponen"];
+}
+
+export type DataWearableInput = Omit<DataWearable, "diterimaAt" | "sumber"> & { sumber?: "garmin" };
+
+export interface BarisWearableTim {
+  athleteId: string;
+  nama: string;
+  /** False bila Atlet belum memberi (atau sudah mencabut) persetujuan Data wearable. */
+  persetujuanBerlaku: boolean;
+  data: DataWearable | null;
+}
+
+/** Rentang wajar tiap metrik; nilai di luar rentang dianggap galat sinkronisasi. */
+function validasiDataWearable(d: DataWearableInput): string | null {
+  const di = (v: number | null | undefined, min: number, maks: number) => v === null || v === undefined || (v >= min && v <= maks);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.tanggal)) return "Tanggal data wearable tidak valid.";
+  if (!di(d.langkah, 0, 100_000)) return "Jumlah langkah di luar rentang.";
+  if (!di(d.menitIntensitas, 0, 1440)) return "Menit intensitas di luar rentang.";
+  if (d.tidur && (!di(d.tidur.durasiMenit, 0, 1440) || !di(d.tidur.skor, 0, 100))) return "Data tidur di luar rentang.";
+  if (!di(d.kalori, 0, 15_000)) return "Kalori di luar rentang.";
+  if (d.detakJantung && [d.detakJantung.istirahat, d.detakJantung.rataRata, d.detakJantung.maks].some((v) => !di(v, 25, 230))) {
+    return "Detak jantung di luar rentang.";
+  }
+  if (!di(d.stres, 0, 100)) return "Tingkat stres di luar rentang.";
+  if (!di(d.spo2, 50, 100)) return "Pulse Ox di luar rentang.";
+  if (d.bodyBattery && (!di(d.bodyBattery.tertinggi, 0, 100) || !di(d.bodyBattery.terendah, 0, 100))) return "Body Battery di luar rentang.";
+  if (d.komposisiTubuh && (!di(d.komposisiTubuh.beratKg, 20, 250) || !di(d.komposisiTubuh.lemakPersen, 2, 70))) {
+    return "Komposisi tubuh di luar rentang.";
+  }
+  if (!di(d.respirasi, 4, 60)) return "Respirasi di luar rentang.";
+  if (d.tekananDarah && (!di(d.tekananDarah.sistolik, 60, 260) || !di(d.tekananDarah.diastolik, 30, 160))) {
+    return "Tekanan darah di luar rentang.";
+  }
+  return null;
 }
 
 export interface ProfilAtletInput {
@@ -161,8 +196,8 @@ export class MonitoringService {
     actor: Actor,
     payload: { userId: string; peran: Peran; subPeran?: SubPeranTimSupport }
   ): CommandResult<Membership> {
-    const cek = cekPeran(actor, ["manajer_tim"]);
-    if (!cek.diizinkan) return fail(cek.alasan!);
+    const kontrol = this.cekKontrol(actor);
+    if (!kontrol.ok) return kontrol;
     if (payload.peran === "atlet") return fail("Gunakan daftarkanAtlet untuk menambah Atlet.");
     const m: Membership = {
       userId: payload.userId,
@@ -179,13 +214,14 @@ export class MonitoringService {
     actor: Actor,
     payload: { userId: string; peran: Peran; subPeran?: SubPeranTimSupport }
   ): CommandResult<Membership> {
-    const cek = cekPeran(actor, ["manajer_tim"]);
-    if (!cek.diizinkan) return fail(cek.alasan!);
+    const kontrol = this.cekKontrol(actor);
+    if (!kontrol.ok) return kontrol;
     const existing = this.storage.getMembership(payload.userId, actor.teamId);
     if (!existing) return fail("Anggota tidak ditemukan di Tim ini.");
     if (existing.peran === "atlet" || payload.peran === "atlet") {
       return fail("Peran Atlet tidak bisa diubah lewat ubahPeran.");
     }
+    if (existing.peran === "manajer_tim") return fail("Peran Super admin (Manajer Tim) tidak bisa diubah.");
     const m: Membership = { ...existing, peran: payload.peran, subPeran: payload.subPeran };
     this.storage.saveMembership(m);
     this.audit(actor, "ubahPeran", "membership", payload.userId, `${existing.peran} -> ${payload.peran}`);
@@ -196,8 +232,8 @@ export class MonitoringService {
     actor: Actor,
     payload: { athleteId?: string; nama: string; tanggalLahir: string; guardianUserId?: string } & ProfilAtletInput
   ): CommandResult<Athlete> {
-    const cek = cekPeran(actor, ["manajer_tim"]);
-    if (!cek.diizinkan) return fail(cek.alasan!);
+    const kontrol = this.cekKontrol(actor);
+    if (!kontrol.ok) return kontrol;
     const v = validasiProfilAtlet(payload);
     if (v) return fail(v);
     const id = payload.athleteId ?? this.storage.nextId("atlet");
@@ -223,8 +259,8 @@ export class MonitoringService {
     actor: Actor,
     payload: { athleteId: string; nama?: string; tanggalLahir?: string; guardianUserId?: string } & ProfilAtletInput
   ): CommandResult<Athlete> {
-    const cek = cekPeran(actor, ["manajer_tim"]);
-    if (!cek.diizinkan) return fail(cek.alasan!);
+    const kontrol = this.cekKontrol(actor);
+    if (!kontrol.ok) return kontrol;
     const athlete = this.storage.getAthlete(payload.athleteId);
     if (!athlete || athlete.teamId !== actor.teamId) return fail("Atlet tidak ditemukan.");
     if (athlete.archived) return fail("Atlet yang sudah diarsipkan tidak bisa diubah.");
@@ -248,8 +284,8 @@ export class MonitoringService {
   }
 
   arsipkanAtlet(actor: Actor, payload: { athleteId: string }): CommandResult<Athlete> {
-    const cek = cekPeran(actor, ["manajer_tim"]);
-    if (!cek.diizinkan) return fail(cek.alasan!);
+    const kontrol = this.cekKontrol(actor);
+    if (!kontrol.ok) return kontrol;
     const athlete = this.storage.getAthlete(payload.athleteId);
     if (!athlete || athlete.teamId !== actor.teamId) return fail("Atlet tidak ditemukan.");
     const updated = { ...athlete, archived: true };
@@ -263,8 +299,8 @@ export class MonitoringService {
    * tidak bisa dibatalkan; Log Audit tetap mencatat siapa yang menghapus.
    */
   hapusAtlet(actor: Actor, payload: { athleteId: string }): CommandResult<{ id: string; nama: string }> {
-    const cek = cekPeran(actor, ["manajer_tim"]);
-    if (!cek.diizinkan) return fail(cek.alasan!);
+    const kontrol = this.cekKontrol(actor);
+    if (!kontrol.ok) return kontrol;
     const athlete = this.storage.getAthlete(payload.athleteId);
     if (!athlete || athlete.teamId !== actor.teamId) return fail("Atlet tidak ditemukan.");
     this.storage.deleteAthleteCascade(athlete.id);
@@ -274,16 +310,53 @@ export class MonitoringService {
 
   /** Menghapus anggota staf (Staf Pelatih atau Tim Support) dari Tim. */
   hapusAnggota(actor: Actor, payload: { userId: string }): CommandResult<Membership> {
-    const cek = cekPeran(actor, ["manajer_tim"]);
-    if (!cek.diizinkan) return fail(cek.alasan!);
+    const kontrol = this.cekKontrol(actor);
+    if (!kontrol.ok) return kontrol;
     if (payload.userId === actor.userId) return fail("Anda tidak bisa menghapus akun sendiri.");
     const m = this.storage.getMembership(payload.userId, actor.teamId);
     if (!m) return fail("Anggota tidak ditemukan di Tim ini.");
     if (m.peran === "atlet") return fail("Gunakan hapusAtlet untuk menghapus Atlet.");
-    if (m.peran === "manajer_tim") return fail("Manajer Tim tidak bisa dihapus.");
+    if (m.peran === "manajer_tim") return fail("Super admin (Manajer Tim) tidak bisa dihapus.");
     this.storage.deleteMembership(m.userId, m.teamId);
     this.audit(actor, "hapusAnggota", "membership", m.userId, m.peran);
     return ok(m);
+  }
+
+  /**
+   * Mengubah profil anggota staf: nama tampilan dan status Admin. Status Admin
+   * Super admin tidak bisa diubah, dan tidak ada yang bisa mengubah status
+   * Admin dirinya sendiri.
+   */
+  ubahProfilAnggota(actor: Actor, payload: { userId: string; nama?: string; admin?: boolean }): CommandResult<Membership> {
+    const kontrol = this.cekKontrol(actor);
+    if (!kontrol.ok) return kontrol;
+    const m = this.storage.getMembership(payload.userId, actor.teamId);
+    if (!m) return fail("Anggota tidak ditemukan di Tim ini.");
+    if (m.peran === "atlet") return fail("Gunakan ubahProfilAtlet untuk mengubah profil Atlet.");
+    if (payload.nama !== undefined && !payload.nama.trim()) return fail("Nama lengkap wajib diisi.");
+    const adminBerubah = payload.admin !== undefined && payload.admin !== !!m.admin;
+    if (adminBerubah && m.peran === "manajer_tim") return fail("Super admin selalu memiliki otoritas penuh.");
+    if (adminBerubah && m.userId === actor.userId) return fail("Anda tidak bisa mengubah status Admin akun sendiri.");
+    const baru: Membership = {
+      ...m,
+      nama: payload.nama !== undefined ? payload.nama.trim() : m.nama,
+      admin: m.peran === "manajer_tim" ? undefined : (payload.admin ?? m.admin) || undefined,
+    };
+    const berubah = (["nama", "admin"] as const).filter((k) => baru[k] !== m[k]);
+    this.storage.saveMembership(baru);
+    this.audit(actor, "ubahProfilAnggota", "membership", m.userId, berubah.join(", "));
+    return ok(baru);
+  }
+
+  /** True bila Aktor adalah Super admin (Manajer Tim) atau staf berstatus Admin. */
+  punyaKontrol(actor: Actor): boolean {
+    const m = this.storage.getMembership(actor.userId, actor.teamId);
+    return !!m && (m.peran === "manajer_tim" || (m.admin === true && m.peran !== "atlet"));
+  }
+
+  private cekKontrol(actor: Actor): CommandResult<true> {
+    if (this.punyaKontrol(actor)) return ok(true);
+    return fail("Hanya Super admin (Manajer Tim) atau anggota berstatus Admin yang bisa melakukan ini.");
   }
 
   /** Data Tim beserta konfigurasi skor yang berlaku. Bisa dibaca semua anggota. */
@@ -533,6 +606,61 @@ export class MonitoringService {
       guardianApprovalAt: this.storage.getGuardianApproval(athlete.id)?.at,
     });
     return keputusan.diizinkan ? ok(true) : fail(keputusan.alasan!);
+  }
+
+  // ───────────────────────── Data Wearable ─────────────────────────
+
+  /**
+   * Menerima ringkasan harian dari adapter wearable (Garmin). Dipanggil oleh
+   * sistem, bukan oleh pengguna. Ditolak bila persetujuan Data wearable Atlet
+   * tidak berlaku pada tanggal data itu. Kiriman ulang untuk tanggal yang sama
+   * menimpa data sebelumnya.
+   */
+  terimaDataWearable(payload: DataWearableInput): CommandResult<DataWearable> {
+    const athlete = this.storage.getAthlete(payload.athleteId);
+    if (!athlete) return fail("Atlet tidak ditemukan.");
+    if (athlete.archived) return fail("Atlet sudah diarsipkan.");
+    const v = validasiDataWearable(payload);
+    if (v) return fail(v);
+    const izin = this.cekPersetujuan(athlete, "wearable", payload.tanggal);
+    if (!izin.ok) return izin;
+    const data: DataWearable = { ...payload, sumber: payload.sumber ?? "garmin", diterimaAt: this.clock.nowISO() };
+    this.storage.saveDataWearable(data);
+    return ok(data);
+  }
+
+  /** Data wearable seorang Atlet dalam rentang tanggal, dengan aturan baca yang sama seperti skor. */
+  dataWearableAtlet(
+    actor: Actor,
+    payload: { athleteId: string; dari: string; sampai: string }
+  ): CommandResult<{ persetujuanBerlaku: boolean; alasan?: string; data: DataWearable[] }> {
+    const akses = this.cekBacaSkorIndividu(actor, payload.athleteId);
+    if (!akses.ok) return akses;
+    const athlete = this.storage.getAthlete(payload.athleteId)!;
+    const izin = this.cekPersetujuan(athlete, "wearable", payload.sampai);
+    return ok({
+      persetujuanBerlaku: izin.ok,
+      alasan: izin.ok ? undefined : izin.reason,
+      data: this.storage.listDataWearableByAthlete(payload.athleteId, payload.dari, payload.sampai),
+    });
+  }
+
+  /** Data wearable seluruh Atlet aktif pada satu tanggal, untuk dashboard staf. */
+  wearableTim(actor: Actor, payload: { tanggal: string }): CommandResult<BarisWearableTim[]> {
+    const cek = cekPeran(actor, ["staf_pelatih", "tim_support"]);
+    if (!cek.diizinkan) return fail(cek.alasan!);
+    return ok(
+      this.storage
+        .listAthletesByTeam(actor.teamId)
+        .filter((a) => !a.archived)
+        .map((a) => ({
+          athleteId: a.id,
+          nama: a.nama,
+          persetujuanBerlaku: this.cekPersetujuan(a, "wearable", payload.tanggal).ok,
+          data: this.storage.getDataWearable(a.id, payload.tanggal) ?? null,
+        }))
+        .sort((a, b) => a.nama.localeCompare(b.nama))
+    );
   }
 
   // ───────────────────────── Sesi ─────────────────────────
@@ -1096,7 +1224,7 @@ export class MonitoringService {
 
   logAudit(actor: Actor): CommandResult<AuditEntry[]> {
     const semua = this.storage.listAudit(actor.teamId);
-    if (actor.peran === "manajer_tim") return ok(semua);
+    if (this.punyaKontrol(actor)) return ok(semua);
     if (actor.peran === "atlet") {
       return ok(semua.filter((e) => e.targetType === "athlete" && e.targetId === actor.athleteId));
     }
