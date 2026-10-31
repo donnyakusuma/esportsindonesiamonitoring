@@ -7,6 +7,9 @@ import type {
   DailyScore,
   DataWearable,
   GuardianApproval,
+  IntegrasiGarmin,
+  KoneksiGarmin,
+  Laporan,
   Membership,
   Notification,
   Sesi,
@@ -30,6 +33,10 @@ export class MemoryStorage implements StoragePort {
   private sesiList = new Map<string, Sesi>(); // key sesiId
   private dailyScores = new Map<string, DailyScore>(); // key `${athleteId}:${tanggal}`
   private dataWearable = new Map<string, DataWearable>(); // key `${athleteId}:${tanggal}`
+  private integrasiGarmin = new Map<string, IntegrasiGarmin>(); // key teamId
+  private rahasia = new Map<string, string>();
+  private koneksiGarmin = new Map<string, KoneksiGarmin>(); // key athleteId
+  private laporanList = new Map<string, Laporan>(); // key laporanId
   private catatanList = new Map<string, Catatan>(); // key catatanId
   private threadReplies = new Map<string, ThreadReply[]>(); // key catatanId
   private notifications = new Map<string, Notification[]>(); // key userId
@@ -70,6 +77,8 @@ export class MemoryStorage implements StoragePort {
       this.threadReplies.delete(k);
     }
     this.notifications.delete(athleteId);
+    this.koneksiGarmin.delete(athleteId);
+    for (const [k, l] of this.laporanList) if (l.athleteId === athleteId) this.laporanList.delete(k);
   }
 
   getAthlete(athleteId: string): Athlete | undefined {
@@ -157,6 +166,37 @@ export class MemoryStorage implements StoragePort {
     return [...this.dataWearable.values()]
       .filter((d) => d.athleteId === athleteId && inRange(d.tanggal, fromTanggal, toTanggal))
       .sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+  }
+
+  getIntegrasiGarmin(teamId: string): IntegrasiGarmin | undefined {
+    return this.integrasiGarmin.get(teamId);
+  }
+  saveIntegrasiGarmin(i: IntegrasiGarmin): void {
+    this.integrasiGarmin.set(i.teamId, i);
+  }
+  simpanRahasia(kunci: string, nilai: string): void {
+    this.rahasia.set(kunci, nilai);
+  }
+  getKoneksiGarmin(athleteId: string): KoneksiGarmin | undefined {
+    return this.koneksiGarmin.get(athleteId);
+  }
+  saveKoneksiGarmin(k: KoneksiGarmin): void {
+    this.koneksiGarmin.set(k.athleteId, k);
+  }
+  deleteKoneksiGarmin(athleteId: string): void {
+    this.koneksiGarmin.delete(athleteId);
+  }
+
+  getLaporan(laporanId: string): Laporan | undefined {
+    return this.laporanList.get(laporanId);
+  }
+  saveLaporan(l: Laporan): void {
+    this.laporanList.set(l.id, l);
+  }
+  listLaporanByTeam(teamId: string): Laporan[] {
+    return [...this.laporanList.values()]
+      .filter((l) => l.teamId === teamId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
   getCatatan(catatanId: string): Catatan | undefined {

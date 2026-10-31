@@ -6,6 +6,8 @@ import { tambahHari } from "../../../src/domain/tanggal.js";
 import { CatatanItem, Linimasa, TulisCatatan } from "../bersama.js";
 import { GarminTim, KartuGarmin } from "../garmin.js";
 import { TrenChart } from "../TrenChart.js";
+import { HalamanIntegrasiGarmin } from "./integrasi.js";
+import { ItemLaporan } from "./atlet.js";
 import { Anggota, HalamanLogAudit } from "./manajer.js";
 import { DaftarAtlet } from "./roster.js";
 import {
@@ -37,7 +39,8 @@ export type HalamanStaf =
   | { id: "kotak_masuk" }
   | { id: "konfigurasi" }
   | { id: "anggota" }
-  | { id: "audit" };
+  | { id: "audit" }
+  | { id: "integrasi" };
 
 /** Item dengan `kontrol` hanya tampil untuk staf berstatus Admin. */
 export const MENU_STAF: { id: HalamanStaf["id"]; label: string; kontrol?: true }[] = [
@@ -49,6 +52,7 @@ export const MENU_STAF: { id: HalamanStaf["id"]; label: string; kontrol?: true }
   { id: "konfigurasi", label: "Konfigurasi Skor" },
   { id: "anggota", label: "Anggota Tim", kontrol: true },
   { id: "audit", label: "Log Audit", kontrol: true },
+  { id: "integrasi", label: "Integrasi Garmin", kontrol: true },
 ];
 
 export function HalamanStaf({ halaman, pindah }: { halaman: HalamanStaf; pindah(h: HalamanStaf): void }) {
@@ -71,13 +75,16 @@ export function HalamanStaf({ halaman, pindah }: { halaman: HalamanStaf; pindah(
       return <Anggota />;
     case "audit":
       return <HalamanLogAudit />;
+    case "integrasi":
+      return <HalamanIntegrasiGarmin />;
   }
 }
 
 /** Jumlah Tindak Lanjut terbuka dan notifikasi, untuk lencana di menu. */
 export function hitungKotakMasuk(ctx: ReturnType<typeof useApp>): number {
   const tl = ctx.svc.tindakLanjutSaya(ctx.actor);
-  return tl.ok ? tl.data.length : 0;
+  const lap = ctx.svc.laporanTim(ctx.actor);
+  return (tl.ok ? tl.data.length : 0) + (lap.ok ? lap.data.filter((l) => l.status === "baru").length : 0);
 }
 
 // ───────────────────────── Papan Tim ─────────────────────────
@@ -700,12 +707,42 @@ function JadwalkanSesi() {
 
 function KotakMasuk() {
   const { svc, actor } = useApp();
+  const { umpan, jalankan } = useAksi();
   const tl = svc.tindakLanjutSaya(actor);
   const notif = svc.notifikasiSaya(actor);
+  const laporan = svc.laporanTim(actor);
+  const baru = laporan.ok ? laporan.data.filter((l) => l.status === "baru").length : 0;
   return (
     <>
       <div className="judul">
         <h1>Kotak masuk</h1>
+      </div>
+      <div className="card stack">
+        <div className="card-head" style={{ marginBottom: 0 }}>
+          <h2>Laporan atlet</h2>
+          <span className="muted kecil">{baru > 0 ? `${baru} laporan baru` : "Semua laporan sudah dibaca"}</span>
+        </div>
+        <Pesan umpan={umpan} />
+        {!laporan.ok ? (
+          <Pesan umpan={{ jenis: "gagal", teks: laporan.reason }} />
+        ) : laporan.data.length === 0 ? (
+          <Kosong>Belum ada laporan dari atlet.</Kosong>
+        ) : (
+          laporan.data.map((l) => (
+            <ItemLaporan
+              key={l.id}
+              laporan={l}
+              tampilkanAtlet
+              aksi={
+                l.status === "baru" && (
+                  <button className="btn kecil" onClick={() => jalankan(svc.tandaiLaporanDibaca(actor, { laporanId: l.id }), "Laporan ditandai dibaca.")}>
+                    Tandai dibaca
+                  </button>
+                )
+              }
+            />
+          ))
+        )}
       </div>
       <div className="grid-2">
         <div className="card stack">

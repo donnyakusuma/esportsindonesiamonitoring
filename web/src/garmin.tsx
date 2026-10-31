@@ -190,8 +190,8 @@ export function KartuGarmin(props: { data: DataWearable[]; tanggal: string; pers
       <div className="row spread">
         <span className="muted kecil">
           {hariIni
-            ? `Sinkron dari Garmin Connect ${new Date(hariIni.diterimaAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" })}`
-            : "Belum sinkron untuk tanggal ini; menampilkan data terakhir yang ada."}
+            ? `Update pukul ${new Date(hariIni.diterimaAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" })}`
+            : "Belum ada update hari ini; menampilkan data terakhir yang ada."}
         </span>
         {!props.persetujuanBerlaku && <span className="status kuning">Persetujuan dicabut</span>}
       </div>

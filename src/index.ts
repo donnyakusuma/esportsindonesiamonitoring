@@ -1,5 +1,5 @@
 export * from "./domain/types.js";
-export { MonitoringService, resolveScoreConfig } from "./service/monitoringService.js";
+export { BATAS_LAPORAN, MonitoringService, resolveScoreConfig } from "./service/monitoringService.js";
 export type { BarisPapanTim, BarisWearableTim, CheckInPayload, DataWearableInput, ProfilAtletInput } from "./service/monitoringService.js";
 export type { CommandResult } from "./service/result.js";
 export type { StoragePort } from "./ports/storage.js";

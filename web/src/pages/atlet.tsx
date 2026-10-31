@@ -1,6 +1,6 @@
-import { useState } from "react";
-import type { CheckInItems, CheckInPayload, JenisPersetujuan, JenisSesi, KomponenSkor, PetaNyeri, Sesi } from "../../../src/index.js";
-import { AREA_NYERI, RPE_LABELS } from "../../../src/index.js";
+import { type ReactNode, useState } from "react";
+import type { CheckInItems, CheckInPayload, KomponenSkor, Laporan, PetaNyeri } from "../../../src/index.js";
+import { AREA_NYERI, BATAS_LAPORAN } from "../../../src/index.js";
 import { tambahHari } from "../../../src/domain/tanggal.js";
 import { CatatanItem, Linimasa } from "../bersama.js";
 import { KartuGarmin } from "../garmin.js";
@@ -8,14 +8,12 @@ import { TrenChart } from "../TrenChart.js";
 import {
   AREA_NYERI_LABEL,
   CincinReadiness,
-  dariInputWaktu,
   fmtAngka,
   fmtJam,
   fmtTanggal,
   fmtWaktu,
   Info,
-  JENIS_SESI_LABEL,
-  keInputWaktu,
+  Jendela,
   Kosong,
   Pesan,
   Skala,
@@ -25,13 +23,14 @@ import {
 } from "../ui.js";
 import { LogAudit } from "./manajer.js";
 
-export type HalamanAtlet = "hari_ini" | "tren" | "catatan" | "persetujuan" | "audit";
+export type HalamanAtlet = "hari_ini" | "checkin" | "lapor" | "tren" | "catatan" | "audit";
 
 export const MENU_ATLET: { id: HalamanAtlet; label: string }[] = [
   { id: "hari_ini", label: "Hari Ini" },
+  { id: "checkin", label: "Check-in" },
+  { id: "lapor", label: "Lapor!" },
   { id: "tren", label: "Tren Saya" },
   { id: "catatan", label: "Catatan untuk Saya" },
-  { id: "persetujuan", label: "Persetujuan Data" },
   { id: "audit", label: "Siapa Mengakses Data Saya" },
 ];
 
@@ -39,12 +38,22 @@ export function HalamanAtlet({ halaman, pindah }: { halaman: HalamanAtlet; pinda
   switch (halaman) {
     case "hari_ini":
       return <HariIni pindah={pindah} />;
+    case "checkin":
+      return (
+        <>
+          <Judul judul="Check-in pagi" sub="Isi setiap pagi sebelum latihan. Jawaban jujur membantu staf menyesuaikan beban latihan Anda." />
+          <PersetujuanDiperlukan />
+          <div className="card" style={{ maxWidth: 820 }}>
+            <FormCheckIn />
+          </div>
+        </>
+      );
+    case "lapor":
+      return <Lapor />;
     case "tren":
       return <TrenSaya />;
     case "catatan":
       return <CatatanSaya />;
-    case "persetujuan":
-      return <Persetujuan />;
     case "audit":
       return (
         <>
@@ -73,23 +82,14 @@ function Judul({ judul, sub }: { judul: string; sub?: string }) {
 function HariIni({ pindah }: { pindah(h: HalamanAtlet): void }) {
   const { svc, actor, hariIni } = useApp();
   const skor = svc.skorHarian(actor, { athleteId: actor.athleteId!, tanggal: hariIni });
-  const persetujuan = svc.persetujuanSaya(actor);
+  const checkIn = svc.checkInHariIni(actor);
+  const sudahCheckIn = checkIn.ok && !!checkIn.data.checkIn;
   const garmin = svc.dataWearableAtlet(actor, { athleteId: actor.athleteId!, dari: tambahHari(hariIni, -27), sampai: hariIni });
-  const kuesioner = persetujuan.ok ? persetujuan.data.persetujuan.find((p) => p.jenis === "kuesioner") : undefined;
 
   return (
     <>
       <Judul judul="Hari ini" sub={fmtTanggal(hariIni)} />
-      {kuesioner && !kuesioner.berlaku && (
-        <Info jenis="peringatan">
-          <span>
-            Data Anda belum bisa diproses: {kuesioner.alasan}{" "}
-            <button className="link" onClick={() => pindah("persetujuan")}>
-              Buka Persetujuan Data
-            </button>
-          </span>
-        </Info>
-      )}
+      <PersetujuanDiperlukan />
       <div className="card ringkas">
         <CincinReadiness skor={skor.ok ? skor.data.readiness : null} status={skor.ok ? skor.data.status : "abu_abu"} />
         <div className="stack" style={{ flex: "1 1 280px" }}>
@@ -115,37 +115,81 @@ function HariIni({ pindah }: { pindah(h: HalamanAtlet): void }) {
               </span>
             </div>
           </div>
-        </div>
-      </div>
-      <div className="grid-2">
-        <div className="card">
-          <FormCheckIn />
-        </div>
-        <div className="stack">
-          <div className="card">
-            <SesiMenungguRpe />
-          </div>
-          <div className="card">
-            <CatatSesiLain />
+          <div className="row">
+            <button className={`btn ${sudahCheckIn ? "" : "utama"}`} onClick={() => pindah("checkin")}>
+              {sudahCheckIn ? "Lihat check-in" : "Isi check-in pagi"}
+            </button>
+            <button className="btn" onClick={() => pindah("lapor")}>
+              Lapor!
+            </button>
           </div>
         </div>
       </div>
       <div className="card">
         <div className="card-head">
           <h2>Kondisi saya</h2>
-          {garmin.ok && !garmin.data.persetujuanBerlaku && (
-            <button className="link kecil" onClick={() => pindah("persetujuan")}>
-              Hubungkan lewat Persetujuan Data
-            </button>
+        </div>
+        <div className="stack" style={{ gap: 16 }}>
+          <KoneksiGarminSaya />
+          {garmin.ok ? (
+            (garmin.data.data.length > 0 || garmin.data.persetujuanBerlaku) && (
+              <KartuGarmin data={garmin.data.data} tanggal={hariIni} persetujuanBerlaku={garmin.data.persetujuanBerlaku} alasan={garmin.data.alasan} />
+            )
+          ) : (
+            <Pesan umpan={{ jenis: "gagal", teks: garmin.reason }} />
           )}
         </div>
-        {garmin.ok ? (
-          <KartuGarmin data={garmin.data.data} tanggal={hariIni} persetujuanBerlaku={garmin.data.persetujuanBerlaku} alasan={garmin.data.alasan} />
-        ) : (
-          <Pesan umpan={{ jenis: "gagal", teks: garmin.reason }} />
-        )}
       </div>
     </>
+  );
+}
+
+/**
+ * Menggantikan halaman Persetujuan Data: hanya muncul bila persetujuan
+ * Kuesioner belum berlaku, karena tanpa itu Check-in ditolak.
+ */
+function PersetujuanDiperlukan() {
+  const { svc, actor, nama } = useApp();
+  const { umpan, jalankan } = useAksi();
+  const r = svc.persetujuanSaya(actor);
+  if (!r.ok) return null;
+  const kuesioner = r.data.persetujuan.find((p) => p.jenis === "kuesioner");
+  if (!kuesioner || kuesioner.berlaku) return umpan ? <Pesan umpan={umpan} /> : null;
+  const wali = r.data.wali;
+  const menungguWali = kuesioner.granted && wali && !wali.disetujuiAt;
+
+  return (
+    <div className="card stack persetujuan-perlu">
+      <h2>Persetujuan diperlukan</h2>
+      {menungguWali ? (
+        <>
+          <p className="ink-2">
+            Karena Anda berusia di bawah 18 tahun, data baru diproses setelah wali Anda ({nama(wali.userId)}) menyetujui.
+          </p>
+          <div>
+            <button
+              className="btn"
+              onClick={() => jalankan(svc.setujuiSebagaiWali({ athleteId: actor.athleteId!, guardianUserId: wali.userId }), "Persetujuan wali tercatat.")}
+            >
+              Simulasikan persetujuan wali (demo)
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="ink-2">
+            Check-in pagi dan skor readiness diproses setelah Anda menyetujui pengumpulan data kuesioner harian. Persetujuan ini tercatat dan
+            bisa dicabut lewat staf.
+          </p>
+          <div>
+            <button className="btn utama" onClick={() => jalankan(svc.berikanPersetujuan(actor, { jenis: "kuesioner" }), "Persetujuan diberikan.")}>
+              Saya setuju
+            </button>
+          </div>
+        </>
+      )}
+      <Pesan umpan={umpan} />
+    </div>
   );
 }
 
@@ -377,139 +421,6 @@ function FormCheckIn() {
   );
 }
 
-function PilihRpe({ nilai, ubah }: { nilai: number | null; ubah(n: number): void }) {
-  return (
-    <div className="stack" style={{ gap: 4 }}>
-      <Skala label="RPE" nilai={nilai ?? -1} dari={0} sampai={10} ubah={ubah} lebar />
-      <span className="muted kecil">
-        {nilai === null ? "Seberapa berat sesi ini terasa? 0 = istirahat, 10 = maksimal." : `RPE ${nilai}: ${RPE_LABELS[nilai]}`}
-      </span>
-    </div>
-  );
-}
-
-function SesiMenungguRpe() {
-  const { svc, actor } = useApp();
-  // Umpan balik disimpan di sini, bukan di kartu sesi, karena kartu itu
-  // hilang dari daftar begitu RPE-nya tersimpan.
-  const aksi = useAksi();
-  const r = svc.sesiMenungguRpe(actor);
-  return (
-    <div className="stack">
-      <h2>Sesi menunggu RPE</h2>
-      {!r.ok ? (
-        <Pesan umpan={{ jenis: "gagal", teks: r.reason }} />
-      ) : r.data.length === 0 ? (
-        <Kosong>Semua sesi sudah diisi RPE-nya.</Kosong>
-      ) : (
-        r.data.map((s) => <IsiRpe key={s.id} sesi={s} jalankan={aksi.jalankan} />)
-      )}
-      <Pesan umpan={aksi.umpan} />
-    </div>
-  );
-}
-
-function IsiRpe({ sesi, jalankan }: { sesi: Sesi; jalankan: ReturnType<typeof useAksi>["jalankan"] }) {
-  const { svc, actor } = useApp();
-  const [rpe, setRpe] = useState<number | null>(null);
-  const [durasi, setDurasi] = useState(sesi.durasiMenit);
-  return (
-    <div className="catatan">
-      <div className="row spread">
-        <b>{JENIS_SESI_LABEL[sesi.jenis]}</b>
-        <span className="ink-2 kecil">
-          {fmtWaktu(sesi.mulaiAt)}
-          {sesi.rpeRencana !== undefined && ` · rencana RPE ${sesi.rpeRencana}`}
-        </span>
-      </div>
-      <label className="row kecil">
-        Durasi aktual
-        <input type="number" min={1} style={{ width: 80 }} value={durasi} onChange={(e) => setDurasi(Number(e.target.value))} />
-        menit
-      </label>
-      <PilihRpe nilai={rpe} ubah={setRpe} />
-      <div>
-        <button
-          className="btn utama kecil"
-          disabled={rpe === null}
-          onClick={() => rpe !== null && jalankan(
-                svc.catatSesi(actor, { sesiId: sesi.id, rpeAktual: rpe, durasiMenit: durasi }),
-                `RPE ${JENIS_SESI_LABEL[sesi.jenis].toLowerCase()} ${fmtWaktu(sesi.mulaiAt)} tersimpan.`
-              )}
-        >
-          Simpan RPE
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function CatatSesiLain() {
-  const { svc, actor } = useApp();
-  const { umpan, jalankan } = useAksi();
-  const [buka, setBuka] = useState(false);
-  const [jenis, setJenis] = useState<JenisSesi>("ranked");
-  const [mulai, setMulai] = useState(() => keInputWaktu(new Date(Date.now() - 2 * 3600_000).toISOString()));
-  const [durasi, setDurasi] = useState(90);
-  const [rpe, setRpe] = useState<number | null>(null);
-
-  return (
-    <div className="stack">
-      <div className="card-head" style={{ marginBottom: 0 }}>
-        <h2>Catat sesi lain</h2>
-        <button className="link kecil" onClick={() => setBuka((v) => !v)}>
-          {buka ? "Tutup" : "Tambah sesi"}
-        </button>
-      </div>
-      {!buka ? (
-        <p className="muted kecil">Untuk latihan yang tidak dijadwalkan staf, misalnya ranked malam.</p>
-      ) : (
-        <>
-          <div className="fields">
-            <label className="field">
-              Jenis
-              <select value={jenis} onChange={(e) => setJenis(e.target.value as JenisSesi)}>
-                {Object.entries(JENIS_SESI_LABEL).map(([k, v]) => (
-                  <option key={k} value={k}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              Mulai (WIB)
-              <input type="datetime-local" value={mulai} onChange={(e) => setMulai(e.target.value)} />
-            </label>
-            <label className="field">
-              Durasi (menit)
-              <input type="number" min={1} value={durasi} onChange={(e) => setDurasi(Number(e.target.value))} />
-            </label>
-          </div>
-          <PilihRpe nilai={rpe} ubah={setRpe} />
-          <div>
-            <button
-              className="btn utama"
-              disabled={rpe === null}
-              onClick={() => {
-                if (rpe === null) return;
-                const mulaiAt = dariInputWaktu(mulai);
-                const selesaiAt = new Date(new Date(mulaiAt).getTime() + durasi * 60_000).toISOString();
-                if (jalankan(svc.catatSesi(actor, { jenis, durasiMenit: durasi, mulaiAt, selesaiAt, rpeAktual: rpe }), "Sesi tercatat.")) {
-                  setRpe(null);
-                  setBuka(false);
-                }
-              }}
-            >
-              Simpan sesi
-            </button>
-          </div>
-        </>
-      )}
-      <Pesan umpan={umpan} />
-    </div>
-  );
-}
-
 // ───────────────────────── Tren ─────────────────────────
 
 function TrenSaya() {
@@ -563,120 +474,235 @@ function CatatanSaya() {
   );
 }
 
-// ───────────────────────── Persetujuan ─────────────────────────
+// ───────────────────────── Akun Garmin ─────────────────────────
 
-const JENIS_PERSETUJUAN: Record<JenisPersetujuan, { label: string; ket: string; tahap?: string }> = {
-  kuesioner: {
-    label: "Kuesioner harian dan sesi",
-    ket: "Check-in pagi, RPE sesi, dan skor yang dihitung dari keduanya.",
-  },
-  tes_reaksi: { label: "Tes reaksi", ket: "Hasil tes waktu reaksi harian.", tahap: "Tersedia di Tahap 2" },
-  wearable: {
-    label: "Data wearable (Garmin)",
-    ket: "Langkah, tidur, kalori, detak jantung, stres, Pulse Ox, Body Battery, komposisi tubuh, respirasi, dan tekanan darah dari Garmin Connect.",
-  },
-};
+/**
+ * Menghubungkan akun Garmin milik atlet sendiri. Menghubungkan sekaligus
+ * memberi persetujuan Data wearable; otorisasi Garmin Connect disimulasikan.
+ */
+function KoneksiGarminSaya() {
+  const { svc, actor } = useApp();
+  const { umpan, jalankan, setUmpan } = useAksi();
+  const [otorisasi, setOtorisasi] = useState(false);
+  const r = svc.koneksiGarminSaya(actor);
+  if (!r.ok) return null;
+  const { integrasiAktif, koneksi } = r.data;
+  if (koneksi?.status === "terhubung") return umpan ? <Pesan umpan={umpan} /> : null;
 
-function Persetujuan() {
-  const { svc, actor, nama } = useApp();
-  const { umpan, jalankan } = useAksi();
-  const r = svc.persetujuanSaya(actor);
-  if (!r.ok) return <Pesan umpan={{ jenis: "gagal", teks: r.reason }} />;
-  const { persetujuan, wali } = r.data;
+  return (
+    <div className="hubungkan-garmin">
+      <div className="stack" style={{ gap: 4 }}>
+        <b>Hubungkan jam Garmin</b>
+        <span className="muted kecil">
+          {!integrasiAktif
+            ? "Tim belum mengaktifkan integrasi Garmin."
+            : koneksi?.status === "diundang"
+              ? "Staf mengundang Anda menghubungkan akun Garmin agar langkah, tidur, detak jantung, dan stres terisi otomatis."
+              : "Langkah, tidur, detak jantung, stres, dan data lain akan terisi otomatis setiap pagi."}
+        </span>
+      </div>
+      {integrasiAktif && (
+        <button className="btn utama" onClick={() => setOtorisasi(true)}>
+          Hubungkan akun Garmin
+        </button>
+      )}
+      <Pesan umpan={umpan} />
+      {otorisasi && (
+        <Jendela judul="Otorisasi Garmin Connect" tutup={() => setOtorisasi(false)}>
+          <div className="stack">
+            <h2>Izinkan akses Garmin Connect</h2>
+            <p className="ink-2">
+              Dengan menghubungkan, Anda menyetujui data wearable dari Garmin (langkah, tidur, kalori, detak jantung, stres, Pulse Ox, Body
+              Battery, komposisi tubuh, respirasi, dan tekanan darah) diproses untuk memantau kondisi Anda.
+            </p>
+            <p className="muted kecil">
+              Di aplikasi sungguhan, Anda akan diarahkan ke halaman masuk Garmin Connect. Di prototipe ini langkah itu disimulasikan.
+            </p>
+            <div className="row">
+              <button
+                className="btn utama"
+                style={{ flex: "1 1 140px" }}
+                onClick={() => {
+                  setOtorisasi(false);
+                  const setuju = svc.berikanPersetujuan(actor, { jenis: "wearable" });
+                  if (!setuju.ok) return setUmpan({ jenis: "gagal", teks: setuju.reason });
+                  jalankan(svc.hubungkanAkunGarmin(actor, { garminUserId: `garmin-${actor.athleteId}` }), "Akun Garmin terhubung.");
+                }}
+              >
+                Setuju dan hubungkan (simulasi)
+              </button>
+              <button className="btn" style={{ flex: "1 1 140px" }} onClick={() => setOtorisasi(false)}>
+                Batal
+              </button>
+            </div>
+          </div>
+        </Jendela>
+      )}
+    </div>
+  );
+}
+
+// ───────────────────────── Lapor! ─────────────────────────
+
+interface BerkasPilihan {
+  berkas: File;
+  url: string;
+}
+
+function ukuranTeks(byte: number): string {
+  return byte >= 1_000_000 ? `${fmtAngka(byte / 1_000_000, 1)} MB` : `${fmtAngka(Math.max(1, Math.round(byte / 1000)))} KB`;
+}
+
+function Lapor() {
+  const { svc, actor } = useApp();
+  const { umpan, jalankan, setUmpan } = useAksi();
+  const [isi, setIsi] = useState("");
+  const [berkas, setBerkas] = useState<BerkasPilihan[]>([]);
+  const riwayat = svc.laporanSaya(actor);
+
+  // Galat lama hilang begitu atlet mulai memperbaiki isiannya.
+  const bersihkanGalat = () => umpan?.jenis === "gagal" && setUmpan(null);
+
+  function pilihBerkas(daftar: FileList | null) {
+    if (!daftar) return;
+    bersihkanGalat();
+    const baru = [...daftar].map((f) => ({ berkas: f, url: URL.createObjectURL(f) }));
+    setBerkas((b) => [...b, ...baru].slice(0, BATAS_LAPORAN.lampiran));
+    if (berkas.length + baru.length > BATAS_LAPORAN.lampiran) {
+      setUmpan({ jenis: "gagal", teks: `Maksimal ${BATAS_LAPORAN.lampiran} lampiran per laporan.` });
+    }
+  }
 
   return (
     <>
-      <Judul judul="Persetujuan data" sub="Anda bisa memberikan atau mencabut persetujuan kapan saja. Setiap perubahan tercatat." />
-      {wali && (
-        <div className="card stack">
-          <h2>Persetujuan wali</h2>
-          <p className="ink-2">
-            Karena Anda berusia di bawah 18 tahun, data baru diproses setelah wali Anda ({nama(wali.userId)}) menyetujui.
-          </p>
-          {wali.disetujuiAt ? (
-            <span className="status hijau">
-              <span className="ikon">✓</span>Disetujui wali {fmtWaktu(wali.disetujuiAt)}
+      <Judul
+        judul="Lapor!"
+        sub="Ceritakan apa saja yang perlu diketahui staf: nyeri, cedera, kendala tidur, alat rusak, atau hal lain. Laporan dibaca Staf Pelatih dan Tim Support."
+      />
+      <form
+        className="card stack"
+        style={{ maxWidth: 820 }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          const lampiran = berkas.map((b) => ({ nama: b.berkas.name, tipe: b.berkas.type, ukuranByte: b.berkas.size, url: b.url }));
+          if (jalankan(svc.kirimLaporan(actor, { isi, lampiran }), "Laporan terkirim ke staf.")) {
+            setIsi("");
+            setBerkas([]);
+          }
+        }}
+      >
+        <label className="field">
+          Apa yang ingin Anda laporkan?
+          <textarea
+            id="lapor-isi"
+            rows={5}
+            maxLength={BATAS_LAPORAN.karakter}
+            placeholder="Mis. pergelangan kanan nyeri sejak scrim kemarin, terutama saat klik cepat."
+            value={isi}
+            onChange={(e) => {
+              setIsi(e.target.value);
+              bersihkanGalat();
+            }}
+          />
+          <span className="hint">
+            {isi.length}/{BATAS_LAPORAN.karakter} karakter
+          </span>
+        </label>
+
+        <div className="field">
+          <span>Foto atau video (opsional)</span>
+          <span className="hint">
+            Maksimal {BATAS_LAPORAN.lampiran} berkas. Foto hingga {BATAS_LAPORAN.fotoByte / 1_000_000} MB, video hingga{" "}
+            {BATAS_LAPORAN.videoByte / 1_000_000} MB.
+          </span>
+          <label className="unggah">
+            <input
+              id="lapor-berkas"
+              type="file"
+              accept="image/*,video/*"
+              multiple
+              onChange={(e) => {
+                pilihBerkas(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <span className="unggah-isi">
+              <b>Pilih foto atau video</b>
+              <span className="muted kecil">atau ambil langsung dari kamera di HP</span>
             </span>
-          ) : (
-            <div className="row">
-              <span className="status kuning">
-                <span className="ikon">!</span>Menunggu persetujuan wali
-              </span>
-              <button
-                className="btn kecil"
-                onClick={() =>
-                  jalankan(svc.setujuiSebagaiWali({ athleteId: actor.athleteId!, guardianUserId: wali.userId }), "Persetujuan wali tercatat.")
-                }
-              >
-                Simulasikan persetujuan wali (demo)
-              </button>
+          </label>
+          {berkas.length > 0 && (
+            <div className="lampiran-grid">
+              {berkas.map((b, i) => (
+                <figure key={b.url} className="lampiran">
+                  {b.berkas.type.startsWith("video/") ? <video src={b.url} muted /> : <img src={b.url} alt={b.berkas.name} />}
+                  <figcaption>
+                    <span>{b.berkas.name}</span>
+                    <span className="muted">{ukuranTeks(b.berkas.size)}</span>
+                  </figcaption>
+                  <button
+                    type="button"
+                    className="lampiran-hapus"
+                    aria-label={`Hapus ${b.berkas.name}`}
+                    onClick={() => setBerkas((daftar) => daftar.filter((_, j) => j !== i))}
+                  >
+                    ✕
+                  </button>
+                </figure>
+              ))}
             </div>
           )}
         </div>
-      )}
-      <div className="card">
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Jenis data</th>
-                <th>Status</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {persetujuan.map((p) => {
-                const info = JENIS_PERSETUJUAN[p.jenis];
-                return (
-                  <tr key={p.jenis}>
-                    <td>
-                      <b>{info.label}</b>
-                      <div className="ink-2 kecil">{info.ket}</div>
-                      {info.tahap && <div className="muted kecil">{info.tahap}</div>}
-                    </td>
-                    <td>
-                      {p.berlaku ? (
-                        <span className="status hijau">
-                          <span className="ikon">✓</span>Berlaku
-                        </span>
-                      ) : p.granted ? (
-                        <span className="status kuning">
-                          <span className="ikon">!</span>Diberikan, belum berlaku
-                        </span>
-                      ) : (
-                        <span className="status abu_abu">
-                          <span className="ikon">–</span>Belum diberikan
-                        </span>
-                      )}
-                      {p.granted && !p.berlaku && <div className="muted kecil">{p.alasan}</div>}
-                      {p.at && <div className="muted kecil">Diubah {fmtWaktu(p.at)}</div>}
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      {p.granted ? (
-                        <button
-                          className="btn bahaya kecil"
-                          onClick={() => {
-                            if (confirm(`Cabut persetujuan untuk ${info.label.toLowerCase()}? Data baru tidak akan diproses.`)) {
-                              jalankan(svc.cabutPersetujuan(actor, { jenis: p.jenis }), "Persetujuan dicabut.");
-                            }
-                          }}
-                        >
-                          Cabut
-                        </button>
-                      ) : (
-                        <button className="btn utama kecil" onClick={() => jalankan(svc.berikanPersetujuan(actor, { jenis: p.jenis }), "Persetujuan diberikan.")}>
-                          Berikan
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+
+        <div>
+          <button type="submit" className="btn utama lebar">
+            Kirim laporan
+          </button>
         </div>
+        <Pesan umpan={umpan} />
+      </form>
+
+      <div className="card stack" style={{ maxWidth: 820 }}>
+        <h2>Laporan saya</h2>
+        {!riwayat.ok ? (
+          <Pesan umpan={{ jenis: "gagal", teks: riwayat.reason }} />
+        ) : riwayat.data.length === 0 ? (
+          <Kosong>Belum ada laporan.</Kosong>
+        ) : (
+          riwayat.data.map((l) => <ItemLaporan key={l.id} laporan={l} />)
+        )}
       </div>
-      <Pesan umpan={umpan} />
     </>
+  );
+}
+
+/** Satu laporan beserta lampirannya; dipakai di halaman atlet dan Kotak Masuk staf. */
+export function ItemLaporan({ laporan, tampilkanAtlet, aksi }: { laporan: Laporan; tampilkanAtlet?: boolean; aksi?: ReactNode }) {
+  const { nama } = useApp();
+  return (
+    <article className="catatan">
+      <div className="meta">
+        {tampilkanAtlet && <b>{nama(laporan.athleteId)}</b>}
+        <span>{fmtWaktu(laporan.createdAt)}</span>
+        <span className={`status ${laporan.status === "baru" ? "kuning" : "hijau"}`}>
+          {laporan.status === "baru" ? (tampilkanAtlet ? "Baru" : "Terkirim") : `Dibaca${laporan.dibacaOleh ? ` oleh ${nama(laporan.dibacaOleh)}` : ""}`}
+        </span>
+        {aksi && <span style={{ marginLeft: "auto" }}>{aksi}</span>}
+      </div>
+      {laporan.isi && <div className="body">{laporan.isi}</div>}
+      {laporan.lampiran.length > 0 && (
+        <div className="lampiran-grid">
+          {laporan.lampiran.map((l) => (
+            <figure key={l.url} className="lampiran">
+              {l.tipe.startsWith("video/") ? <video src={l.url} controls preload="metadata" /> : <img src={l.url} alt={l.nama} />}
+              <figcaption>
+                <span>{l.nama}</span>
+                <span className="muted">{ukuranTeks(l.ukuranByte)}</span>
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      )}
+    </article>
   );
 }

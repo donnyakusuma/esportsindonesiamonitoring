@@ -1,4 +1,4 @@
-import type { Actor, CheckInItems, CommandResult, JenisKelamin, JenisSesi, Membership, PetaNyeri } from "../../src/index.js";
+import type { Actor, CheckInItems, CommandResult, DataWearableInput, JenisKelamin, JenisSesi, Membership, PetaNyeri } from "../../src/index.js";
 import { MemoryNotificationPort, MemoryStorage, MonitoringService } from "../../src/index.js";
 import { tambahHari, tanggalDiZona } from "../../src/domain/tanggal.js";
 import type { Clock } from "../../src/ports/clock.js";
@@ -157,40 +157,53 @@ const FISIK: Record<string, { rhr: number; berat: number; lemak: number; tidur: 
  * pagi ini, dan Yoga tidak punya data karena belum memberi persetujuan.
  */
 function isiDataGarmin(svc: MonitoringService, clock: DemoClock, hariIni: string, rand: () => number): void {
-  const acak = (min: number, max: number) => min + rand() * (max - min);
-  const bulat = (v: number, digit = 0) => Math.round(v * 10 ** digit) / 10 ** digit;
   for (const p of PROFIL) {
-    const f = FISIK[p.id];
-    if (!f || p.id === "yoga") continue;
+    if (p.id === "yoga") continue;
     for (let mundur = Math.min(21, p.bergabung); mundur >= 0; mundur--) {
       if (mundur === 0 && p.id === "kevin") continue;
       const tanggal = tambahHari(hariIni, -mundur);
       clock.fixed = wib(tanggal, "07:30");
-      const tidurMenit = Math.round(f.tidur + acak(-45, 45));
-      const pulih = Math.max(0, Math.min(1, (tidurMenit - 270) / 240)); // 0 = kurang tidur, 1 = cukup
-      const stres = Math.round(Math.max(5, Math.min(95, f.stres + acak(-10, 10) + (1 - pulih) * 12)));
-      const rhr = Math.round(f.rhr + acak(-2, 2) + (1 - pulih) * 4);
-      const tertinggi = Math.round(Math.max(15, Math.min(100, 35 + pulih * 55 - stres * 0.15 + acak(-6, 6))));
-      const fisik = mundur % 4 === 1;
-      wajib(
-        svc.terimaDataWearable({
-          athleteId: p.id,
-          tanggal,
-          langkah: Math.round(acak(2800, 6500) + (fisik ? 4500 : 0)),
-          menitIntensitas: Math.round(acak(0, 20) + (fisik ? 35 : 0)),
-          tidur: { durasiMenit: tidurMenit, skor: Math.round(Math.max(20, Math.min(98, 35 + pulih * 55 + acak(-6, 6)))) },
-          kalori: Math.round(f.berat * 30 + acak(-150, 200) + (fisik ? 450 : 0)),
-          detakJantung: { istirahat: rhr, rataRata: Math.round(rhr + acak(14, 22)), maks: Math.round(acak(118, 140) + (fisik ? 30 : 0)) },
-          stres,
-          spo2: Math.round(acak(94.5, 98.9)),
-          bodyBattery: { tertinggi, terendah: Math.round(Math.max(5, tertinggi - acak(45, 70))) },
-          komposisiTubuh: mundur % 7 === 0 ? { beratKg: bulat(f.berat + acak(-0.6, 0.6), 1), lemakPersen: bulat(f.lemak + acak(-0.8, 0.8), 1) } : null,
-          respirasi: bulat(acak(13, 16.5), 1),
-          tekananDarah: mundur % 3 === 0 ? { sistolik: Math.round(acak(108, 126)), diastolik: Math.round(acak(68, 82)) } : null,
-        })
-      );
+      wajib(svc.terimaDataWearable(buatDataGarmin(p.id, tanggal, mundur, rand)));
     }
   }
+}
+
+const FISIK_BAWAAN = { rhr: 60, berat: 65, lemak: 18, tidur: 420, stres: 32 };
+
+/** Ringkasan harian Garmin dummy untuk satu atlet. `mundur` = jumlah hari sebelum hari ini. */
+function buatDataGarmin(athleteId: string, tanggal: string, mundur: number, rand: () => number): DataWearableInput {
+  const f = FISIK[athleteId] ?? FISIK_BAWAAN;
+  const acak = (min: number, max: number) => min + rand() * (max - min);
+  const bulat = (v: number, digit = 0) => Math.round(v * 10 ** digit) / 10 ** digit;
+  const tidurMenit = Math.round(f.tidur + acak(-45, 45));
+  const pulih = Math.max(0, Math.min(1, (tidurMenit - 270) / 240)); // 0 = kurang tidur, 1 = cukup
+  const stres = Math.round(Math.max(5, Math.min(95, f.stres + acak(-10, 10) + (1 - pulih) * 12)));
+  const rhr = Math.round(f.rhr + acak(-2, 2) + (1 - pulih) * 4);
+  const tertinggi = Math.round(Math.max(15, Math.min(100, 35 + pulih * 55 - stres * 0.15 + acak(-6, 6))));
+  const fisik = mundur % 4 === 1;
+  return {
+    athleteId,
+    tanggal,
+    langkah: Math.round(acak(2800, 6500) + (fisik ? 4500 : 0)),
+    menitIntensitas: Math.round(acak(0, 20) + (fisik ? 35 : 0)),
+    tidur: { durasiMenit: tidurMenit, skor: Math.round(Math.max(20, Math.min(98, 35 + pulih * 55 + acak(-6, 6)))) },
+    kalori: Math.round(f.berat * 30 + acak(-150, 200) + (fisik ? 450 : 0)),
+    detakJantung: { istirahat: rhr, rataRata: Math.round(rhr + acak(14, 22)), maks: Math.round(acak(118, 140) + (fisik ? 30 : 0)) },
+    stres,
+    spo2: Math.round(acak(94.5, 98.9)),
+    bodyBattery: { tertinggi, terendah: Math.round(Math.max(5, tertinggi - acak(45, 70))) },
+    komposisiTubuh: mundur % 7 === 0 ? { beratKg: bulat(f.berat + acak(-0.6, 0.6), 1), lemakPersen: bulat(f.lemak + acak(-0.8, 0.8), 1) } : null,
+    respirasi: bulat(acak(13, 16.5), 1),
+    tekananDarah: mundur % 3 === 0 ? { sistolik: Math.round(acak(108, 126)), diastolik: Math.round(acak(68, 82)) } : null,
+  };
+}
+
+/**
+ * Simulasi "Sinkron sekarang": membuat ringkasan Garmin hari ini untuk satu
+ * atlet, seolah-olah dikirim webhook Garmin. Hanya untuk prototipe.
+ */
+export function simulasiSinkronGarmin(svc: MonitoringService, athleteId: string): CommandResult<unknown> {
+  return svc.terimaDataWearable(buatDataGarmin(athleteId, hariIniTim(), 0, Math.random));
 }
 
 const JENIS_ACAK: JenisSesi[] = ["scrim", "scrim", "ranked", "individu", "review_vod", "pertandingan"];
@@ -225,6 +238,17 @@ export function buatDemo(): Demo {
   // Budi diberi status Admin sebagai contoh staf dengan otoritas kontrol penuh.
   wajib(svc.ubahProfilAnggota(manajer, { userId: "budi", admin: true }));
   for (const id of ["rina", "budi", "sari", "dimas"]) akun.simpan(id, id, `${id}123`);
+  // Integrasi Garmin sudah diatur dengan kredensial contoh (lingkungan evaluasi).
+  wajib(
+    svc.aturIntegrasiGarmin(manajer, {
+      aktif: true,
+      lingkungan: "evaluasi",
+      consumerKey: "esi-demo-7f3a91c2",
+      consumerSecret: "rahasia-demo",
+      jenisData: ["dailies", "sleeps", "pulse_ox", "respiration", "body_compositions", "blood_pressures"],
+    })
+  );
+  wajib(svc.catatUjiKoneksiGarmin(manajer, { ok: true, pesan: "Simulasi: kredensial lengkap." }));
   const pelatih: Actor = { userId: "budi", teamId: TEAM_ID, peran: "staf_pelatih" };
   const fisio: Actor = { userId: "sari", teamId: TEAM_ID, peran: "tim_support", subPeran: "fisioterapis" };
   const psikolog: Actor = { userId: "dimas", teamId: TEAM_ID, peran: "tim_support", subPeran: "psikolog" };
@@ -249,6 +273,8 @@ export function buatDemo(): Demo {
     // Yoga belum menghubungkan jam Garmin-nya, sebagai contoh atlet tanpa persetujuan Data wearable.
     if (p.id !== "yoga") wajib(svc.berikanPersetujuan(atlet(p.id), { jenis: "wearable" }));
     if (p.wali) wajib(svc.setujuiSebagaiWali({ athleteId: p.id, guardianUserId: p.wali }));
+    // Akun Garmin baru bisa dihubungkan setelah persetujuan (dan persetujuan wali) berlaku.
+    if (p.id !== "yoga") wajib(svc.hubungkanAkunGarmin(atlet(p.id), { garminUserId: `garmin-${p.id}` }));
   }
 
   // Mantan pemain yang sudah keluar dari Tim, untuk contoh Atlet yang diarsipkan.

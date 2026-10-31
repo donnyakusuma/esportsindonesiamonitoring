@@ -11,6 +11,11 @@ import type {
   DailyScore,
   DataWearable,
   GuardianApproval,
+  IntegrasiGarmin,
+  JenisDataGarmin,
+  KoneksiGarmin,
+  Laporan,
+  LampiranLaporan,
   JenisPersetujuan,
   JenisSesi,
   LinimasaEvent,
@@ -112,6 +117,8 @@ function validasiDataWearable(d: DataWearableInput): string | null {
   }
   return null;
 }
+
+export const BATAS_LAPORAN = { karakter: 2000, lampiran: 5, fotoByte: 10_000_000, videoByte: 100_000_000 } as const;
 
 export interface ProfilAtletInput {
   tempatLahir?: string;
@@ -626,7 +633,221 @@ export class MonitoringService {
     if (!izin.ok) return izin;
     const data: DataWearable = { ...payload, sumber: payload.sumber ?? "garmin", diterimaAt: this.clock.nowISO() };
     this.storage.saveDataWearable(data);
+    const koneksi = this.storage.getKoneksiGarmin(athlete.id);
+    if (koneksi?.status === "terhubung") this.storage.saveKoneksiGarmin({ ...koneksi, sinkronTerakhirAt: data.diterimaAt });
     return ok(data);
+  }
+
+  // ───────────────────────── Laporan atlet ─────────────────────────
+
+  /**
+   * Atlet melapor sesuatu ke staf, boleh dengan foto atau video. Laporan
+   * dibaca Staf Pelatih dan Tim Support; Manajer Tim tidak (sesuai PRD).
+   */
+  kirimLaporan(actor: Actor, payload: { isi: string; lampiran?: LampiranLaporan[] }): CommandResult<Laporan> {
+    const cek = cekPeran(actor, ["atlet"]);
+    if (!cek.diizinkan) return fail(cek.alasan!);
+    const athlete = this.storage.getAthlete(actor.athleteId ?? "");
+    if (!athlete || athlete.archived) return fail("Atlet tidak ditemukan.");
+    const isi = payload.isi.trim();
+    const lampiran = payload.lampiran ?? [];
+    if (!isi && lampiran.length === 0) return fail("Tulis laporan atau lampirkan foto/video.");
+    if (isi.length > BATAS_LAPORAN.karakter) return fail(`Laporan maksimal ${BATAS_LAPORAN.karakter} karakter.`);
+    if (lampiran.length > BATAS_LAPORAN.lampiran) return fail(`Maksimal ${BATAS_LAPORAN.lampiran} lampiran per laporan.`);
+    for (const l of lampiran) {
+      const foto = l.tipe.startsWith("image/");
+      const video = l.tipe.startsWith("video/");
+      if (!foto && !video) return fail(`${l.nama}: hanya foto atau video yang bisa dilampirkan.`);
+      const maks = foto ? BATAS_LAPORAN.fotoByte : BATAS_LAPORAN.videoByte;
+      if (l.ukuranByte > maks) return fail(`${l.nama}: ukuran ${foto ? "foto" : "video"} maksimal ${maks / 1_000_000} MB.`);
+    }
+    const laporan: Laporan = {
+      id: this.storage.nextId("laporan"),
+      teamId: athlete.teamId,
+      athleteId: athlete.id,
+      isi,
+      lampiran,
+      createdAt: this.clock.nowISO(),
+      status: "baru",
+    };
+    this.storage.saveLaporan(laporan);
+    this.audit(actor, "kirimLaporan", "athlete", athlete.id, laporan.id);
+    return ok(laporan);
+  }
+
+  laporanSaya(actor: Actor): CommandResult<Laporan[]> {
+    const cek = cekPeran(actor, ["atlet"]);
+    if (!cek.diizinkan) return fail(cek.alasan!);
+    return ok(this.storage.listLaporanByTeam(actor.teamId).filter((l) => l.athleteId === actor.athleteId));
+  }
+
+  laporanTim(actor: Actor): CommandResult<Laporan[]> {
+    const cek = cekPeran(actor, ["staf_pelatih", "tim_support"]);
+    if (!cek.diizinkan) return fail(cek.alasan!);
+    return ok(this.storage.listLaporanByTeam(actor.teamId));
+  }
+
+  tandaiLaporanDibaca(actor: Actor, payload: { laporanId: string }): CommandResult<Laporan> {
+    const cek = cekPeran(actor, ["staf_pelatih", "tim_support"]);
+    if (!cek.diizinkan) return fail(cek.alasan!);
+    const l = this.storage.getLaporan(payload.laporanId);
+    if (!l || l.teamId !== actor.teamId) return fail("Laporan tidak ditemukan.");
+    if (l.status === "dibaca") return ok(l);
+    const baru: Laporan = { ...l, status: "dibaca", dibacaOleh: actor.userId, dibacaAt: this.clock.nowISO() };
+    this.storage.saveLaporan(baru);
+    this.audit(actor, "tandaiLaporanDibaca", "athlete", l.athleteId, l.id);
+    return ok(baru);
+  }
+
+  // ───────────────────────── Integrasi Garmin ─────────────────────────
+
+  /** Pengaturan integrasi (tanpa rahasia) dan status koneksi tiap Atlet aktif. */
+  integrasiGarmin(actor: Actor): CommandResult<{
+    pengaturan: IntegrasiGarmin | null;
+    atlet: { athleteId: string; nama: string; persetujuanBerlaku: boolean; koneksi: KoneksiGarmin | null }[];
+  }> {
+    const kontrol = this.cekKontrol(actor);
+    if (!kontrol.ok) return kontrol;
+    const tanggal = this.hariIniTim(actor.teamId);
+    return ok({
+      pengaturan: this.storage.getIntegrasiGarmin(actor.teamId) ?? null,
+      atlet: this.storage
+        .listAthletesByTeam(actor.teamId)
+        .filter((a) => !a.archived)
+        .sort((a, b) => a.nama.localeCompare(b.nama))
+        .map((a) => ({
+          athleteId: a.id,
+          nama: a.nama,
+          persetujuanBerlaku: this.cekPersetujuan(a, "wearable", tanggal).ok,
+          koneksi: this.storage.getKoneksiGarmin(a.id) ?? null,
+        })),
+    });
+  }
+
+  aturIntegrasiGarmin(
+    actor: Actor,
+    payload: {
+      aktif: boolean;
+      lingkungan: IntegrasiGarmin["lingkungan"];
+      consumerKey: string;
+      /** Kosong atau tidak dikirim berarti rahasia lama tetap dipakai. */
+      consumerSecret?: string;
+      jenisData: JenisDataGarmin[];
+    }
+  ): CommandResult<IntegrasiGarmin> {
+    const kontrol = this.cekKontrol(actor);
+    if (!kontrol.ok) return kontrol;
+    const lama = this.storage.getIntegrasiGarmin(actor.teamId);
+    const key = payload.consumerKey.trim();
+    const secretBaru = payload.consumerSecret?.trim() ?? "";
+    if (payload.lingkungan !== "evaluasi" && payload.lingkungan !== "produksi") return fail("Lingkungan tidak dikenal.");
+    if (payload.aktif) {
+      if (!key) return fail("Consumer Key wajib diisi untuk mengaktifkan integrasi.");
+      if (!secretBaru && !lama?.consumerSecretTersimpan) return fail("Consumer Secret wajib diisi untuk mengaktifkan integrasi.");
+      if (payload.jenisData.length === 0) return fail("Pilih minimal satu jenis data.");
+    }
+    if (secretBaru) this.storage.simpanRahasia(`garmin:${actor.teamId}:consumerSecret`, secretBaru);
+    const baru: IntegrasiGarmin = {
+      teamId: actor.teamId,
+      aktif: payload.aktif,
+      lingkungan: payload.lingkungan,
+      consumerKey: key,
+      consumerSecretTersimpan: !!secretBaru || !!lama?.consumerSecretTersimpan,
+      jenisData: [...new Set(payload.jenisData)],
+      diubahAt: this.clock.nowISO(),
+      diubahOleh: actor.userId,
+      ujiTerakhir: lama?.ujiTerakhir,
+    };
+    this.storage.saveIntegrasiGarmin(baru);
+    // Detail audit tidak pernah memuat rahasia.
+    this.audit(
+      actor,
+      "aturIntegrasiGarmin",
+      "team",
+      actor.teamId,
+      `${baru.aktif ? "aktif" : "nonaktif"}, ${baru.lingkungan}${secretBaru ? ", rahasia diganti" : ""}`
+    );
+    return ok(baru);
+  }
+
+  /** Menyimpan hasil uji koneksi yang dijalankan adapter Garmin. */
+  catatUjiKoneksiGarmin(actor: Actor, payload: { ok: boolean; pesan: string }): CommandResult<IntegrasiGarmin> {
+    const kontrol = this.cekKontrol(actor);
+    if (!kontrol.ok) return kontrol;
+    const lama = this.storage.getIntegrasiGarmin(actor.teamId);
+    if (!lama) return fail("Integrasi Garmin belum diatur.");
+    const baru = { ...lama, ujiTerakhir: { at: this.clock.nowISO(), ok: payload.ok, pesan: payload.pesan } };
+    this.storage.saveIntegrasiGarmin(baru);
+    return ok(baru);
+  }
+
+  /** Staf berwenang mengundang Atlet menghubungkan akun Garmin-nya. */
+  undangHubungkanGarmin(actor: Actor, payload: { athleteId: string }): CommandResult<KoneksiGarmin> {
+    const kontrol = this.cekKontrol(actor);
+    if (!kontrol.ok) return kontrol;
+    const athlete = this.storage.getAthlete(payload.athleteId);
+    if (!athlete || athlete.teamId !== actor.teamId || athlete.archived) return fail("Atlet tidak ditemukan.");
+    if (!this.storage.getIntegrasiGarmin(actor.teamId)?.aktif) return fail("Aktifkan integrasi Garmin terlebih dahulu.");
+    if (this.storage.getKoneksiGarmin(athlete.id)?.status === "terhubung") return fail("Akun Garmin atlet ini sudah terhubung.");
+    const k: KoneksiGarmin = { athleteId: athlete.id, status: "diundang", diundangAt: this.clock.nowISO() };
+    this.storage.saveKoneksiGarmin(k);
+    this.audit(actor, "undangHubungkanGarmin", "athlete", athlete.id);
+    return ok(k);
+  }
+
+  /**
+   * Dipanggil setelah Atlet menyelesaikan otorisasi di Garmin Connect.
+   * Butuh integrasi aktif dan persetujuan Data wearable yang berlaku.
+   */
+  hubungkanAkunGarmin(actor: Actor, payload: { garminUserId: string }): CommandResult<KoneksiGarmin> {
+    const cek = cekPeran(actor, ["atlet"]);
+    if (!cek.diizinkan) return fail(cek.alasan!);
+    const athlete = this.storage.getAthlete(actor.athleteId ?? "");
+    if (!athlete || athlete.archived) return fail("Atlet tidak ditemukan.");
+    if (!this.storage.getIntegrasiGarmin(athlete.teamId)?.aktif) return fail("Integrasi Garmin Tim belum aktif.");
+    const izin = this.cekPersetujuan(athlete, "wearable", this.hariIniTim(athlete.teamId));
+    if (!izin.ok) return fail(`Berikan persetujuan Data wearable terlebih dahulu. ${izin.reason}`);
+    if (!payload.garminUserId.trim()) return fail("ID pengguna Garmin tidak valid.");
+    const k: KoneksiGarmin = {
+      ...this.storage.getKoneksiGarmin(athlete.id),
+      athleteId: athlete.id,
+      status: "terhubung",
+      terhubungAt: this.clock.nowISO(),
+      garminUserId: payload.garminUserId.trim(),
+    };
+    this.storage.saveKoneksiGarmin(k);
+    this.audit(actor, "hubungkanAkunGarmin", "athlete", athlete.id);
+    return ok(k);
+  }
+
+  /** Memutus koneksi Garmin. Bisa oleh Atlet sendiri atau staf berwenang. Data lama tetap tersimpan. */
+  putuskanGarmin(actor: Actor, payload: { athleteId: string }): CommandResult<true> {
+    const diriSendiri = actor.peran === "atlet" && actor.athleteId === payload.athleteId;
+    if (!diriSendiri) {
+      const kontrol = this.cekKontrol(actor);
+      if (!kontrol.ok) return kontrol;
+    }
+    const athlete = this.storage.getAthlete(payload.athleteId);
+    if (!athlete || athlete.teamId !== actor.teamId) return fail("Atlet tidak ditemukan.");
+    if (!this.storage.getKoneksiGarmin(athlete.id)) return fail("Atlet ini belum terhubung ke Garmin.");
+    this.storage.deleteKoneksiGarmin(athlete.id);
+    this.audit(actor, "putuskanGarmin", "athlete", athlete.id);
+    return ok(true);
+  }
+
+  /** Status koneksi Garmin milik Atlet sendiri, untuk halaman Persetujuan Data. */
+  koneksiGarminSaya(actor: Actor): CommandResult<{ integrasiAktif: boolean; koneksi: KoneksiGarmin | null }> {
+    const cek = cekPeran(actor, ["atlet"]);
+    if (!cek.diizinkan) return fail(cek.alasan!);
+    return ok({
+      integrasiAktif: !!this.storage.getIntegrasiGarmin(actor.teamId)?.aktif,
+      koneksi: this.storage.getKoneksiGarmin(actor.athleteId ?? "") ?? null,
+    });
+  }
+
+  private hariIniTim(teamId: string): string {
+    const team = this.storage.getTeam(teamId);
+    return tanggalDiZona(this.clock.nowISO(), team?.timezone ?? "Asia/Jakarta");
   }
 
   /** Data wearable seorang Atlet dalam rentang tanggal, dengan aturan baca yang sama seperti skor. */

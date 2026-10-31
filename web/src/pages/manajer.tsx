@@ -1,18 +1,21 @@
 import { useState } from "react";
 import type { Membership, Peran, SubPeranTimSupport } from "../../../src/index.js";
+import { HalamanIntegrasiGarmin } from "./integrasi.js";
 import { DaftarAtlet } from "./roster.js";
 import { fmtWaktu, Info, Jendela, Kosong, labelOtoritas, labelPeran, PERAN_LABEL, Pesan, SUBPERAN_LABEL, useAksi, useApp } from "../ui.js";
 
-export type HalamanManajer = "atlet" | "anggota" | "audit";
+export type HalamanManajer = "atlet" | "anggota" | "audit" | "integrasi";
 
 export const MENU_MANAJER: { id: HalamanManajer; label: string }[] = [
   { id: "atlet", label: "Atlet" },
   { id: "anggota", label: "Anggota Tim" },
   { id: "audit", label: "Log Audit" },
+  { id: "integrasi", label: "Integrasi Garmin" },
 ];
 
 export function HalamanManajer({ halaman }: { halaman: HalamanManajer }) {
   if (halaman === "audit") return <HalamanLogAudit />;
+  if (halaman === "integrasi") return <HalamanIntegrasiGarmin />;
   if (halaman === "atlet") return <DaftarAtlet />;
   return <Anggota />;
 }
@@ -325,6 +328,12 @@ const AKSI_LABEL: Record<string, string> = {
   hapusAnggota: "Menghapus anggota staf",
   ubahProfilAtlet: "Mengubah profil atlet",
   ubahProfilAnggota: "Mengubah profil anggota",
+  aturIntegrasiGarmin: "Mengubah pengaturan integrasi Garmin",
+  undangHubungkanGarmin: "Mengundang atlet menghubungkan Garmin",
+  hubungkanAkunGarmin: "Menghubungkan akun Garmin",
+  putuskanGarmin: "Memutus koneksi Garmin",
+  kirimLaporan: "Mengirim laporan",
+  tandaiLaporanDibaca: "Membaca laporan atlet",
   berikanPersetujuan: "Memberikan persetujuan",
   cabutPersetujuan: "Mencabut persetujuan",
   setujuiSebagaiWali: "Persetujuan wali",

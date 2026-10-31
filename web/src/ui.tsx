@@ -151,6 +151,8 @@ const IKON: Record<string, string> = {
   kotak: "M1.5 9l2-6h9l2 6v4.5h-13zM1.5 9h4l1 2h3l1-2h4",
   daftar: "M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.5M2.5 8h.5M2.5 12h.5",
   keluar: "M6 2.5H3v11h3M10.5 5l3 3-3 3M13.5 8H6",
+  lapor: "M2.5 6.5v3h2.5l5 3v-9l-5 3zM12.5 6a2.5 2.5 0 010 4M5 9.5l1 4h1.5",
+  tautan: "M6.5 9.5l3-3M7 4.5l1-1a2.8 2.8 0 014 4l-1 1M9 11.5l-1 1a2.8 2.8 0 01-4-4l1-1",
   tim: "M6 7a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM1.5 13.5a4.5 4.5 0 019 0M11 2.2a2.5 2.5 0 010 4.6M12.5 9.3a4.5 4.5 0 012 4.2",
 };
 
@@ -163,13 +165,18 @@ export function Ikon({ nama }: { nama: string }) {
 }
 
 /** Cincin readiness 0-100; kosong (abu-abu) bila skor belum ada. */
-export function CincinReadiness({ skor, status }: { skor: number | null; status: StatusReadiness }) {
+export function CincinReadiness({ skor, status, ukuran = 160 }: { skor: number | null; status: StatusReadiness; ukuran?: number }) {
   const keliling = 339.3; // 2π × 54
   const warna = { hijau: "var(--siap)", kuning: "var(--kuning)", merah: "var(--merah)", abu_abu: "var(--abu-ring)" }[status];
   const isi = skor === null ? 0 : Math.max(0, Math.min(100, skor));
   return (
-    <div className="cincin" role="img" aria-label={skor === null ? "Readiness belum tersedia" : `Readiness ${fmtAngka(skor, 1)}`}>
-      <svg width="160" height="160" viewBox="0 0 128 128">
+    <div
+      className={`cincin ${ukuran < 120 ? "kecil" : ""}`}
+      style={{ width: ukuran, height: ukuran }}
+      role="img"
+      aria-label={skor === null ? "Readiness belum tersedia" : `Readiness ${fmtAngka(skor, 1)}`}
+    >
+      <svg width={ukuran} height={ukuran} viewBox="0 0 128 128">
         <circle cx="64" cy="64" r="54" fill="none" stroke="var(--surface-2)" strokeWidth="12" />
         {skor !== null && (
           <circle

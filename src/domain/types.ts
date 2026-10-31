@@ -212,6 +212,64 @@ export interface DataWearable {
   diterimaAt: string;
 }
 
+/**
+ * Ringkasan data Garmin Health API yang diminta. Dailies memuat langkah, menit
+ * intensitas, kalori, detak jantung, stres, dan Body Battery.
+ */
+export type JenisDataGarmin =
+  | "dailies"
+  | "sleeps"
+  | "pulse_ox"
+  | "respiration"
+  | "body_compositions"
+  | "blood_pressures";
+
+/** Pengaturan integrasi Garmin tingkat Tim. Rahasia API disimpan terpisah dan tidak pernah dikembalikan. */
+export interface IntegrasiGarmin {
+  teamId: string;
+  aktif: boolean;
+  lingkungan: "evaluasi" | "produksi";
+  consumerKey: string;
+  consumerSecretTersimpan: boolean;
+  jenisData: JenisDataGarmin[];
+  diubahAt: string;
+  diubahOleh: string;
+  /** Hasil uji koneksi terakhir. */
+  ujiTerakhir?: { at: string; ok: boolean; pesan: string };
+}
+
+/** Status koneksi akun Garmin seorang Atlet. */
+export interface KoneksiGarmin {
+  athleteId: string;
+  status: "diundang" | "terhubung";
+  diundangAt?: string;
+  terhubungAt?: string;
+  garminUserId?: string;
+  sinkronTerakhirAt?: string;
+}
+
+export interface LampiranLaporan {
+  nama: string;
+  /** MIME type, mis. image/jpeg atau video/mp4. */
+  tipe: string;
+  ukuranByte: number;
+  /** Lokasi berkas. Di prototipe berupa object URL browser; di produksi URL penyimpanan berkas. */
+  url: string;
+}
+
+/** Laporan bebas dari Atlet ke staf (keluhan, cedera, kendala), boleh dengan foto atau video. */
+export interface Laporan {
+  id: string;
+  teamId: string;
+  athleteId: string;
+  isi: string;
+  lampiran: LampiranLaporan[];
+  createdAt: string;
+  status: "baru" | "dibaca";
+  dibacaOleh?: string;
+  dibacaAt?: string;
+}
+
 export type Visibilitas = "staf" | "klinis" | "bersama_atlet";
 
 export interface CatatanVersion {

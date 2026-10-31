@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Athlete, JenisKelamin } from "../../../src/index.js";
 import { usiaPadaTanggal } from "../../../src/modules/akses.js";
-import { fmtTanggal, Info, inisial, Jendela, Pesan, useAksi, useApp } from "../ui.js";
+import { CincinReadiness, fmtTanggal, Info, inisial, Jendela, Pesan, StatusBadge, useAksi, useApp } from "../ui.js";
 
 /**
  * Daftar Atlet terdaftar beserta profilnya. Semua staf bisa melihat; hanya
@@ -24,6 +24,8 @@ export function DaftarAtlet({ bukaReadiness }: { bukaReadiness?(athleteId: strin
   const [filter, setFilter] = useState<Filter>("aktif");
   const [panel, setPanel] = useState<Panel>(null);
   const bisaUbah = kontrol;
+  // Sesuai PRD, Manajer Tim hanya melihat agregat, bukan skor per atlet.
+  const bisaLihatSkor = actor.peran !== "manajer_tim";
 
   const r = svc.anggotaTim(actor);
   if (!r.ok) return <Pesan umpan={{ jenis: "gagal", teks: r.reason }} />;
@@ -108,6 +110,7 @@ export function DaftarAtlet({ bukaReadiness }: { bukaReadiness?(athleteId: strin
               </span>
               <span className={`status ${a.archived ? "abu_abu" : "hijau"}`}>{a.archived ? "Diarsipkan" : "Aktif"}</span>
             </div>
+            {bisaLihatSkor && !a.archived && <ReadinessKartu athleteId={a.id} />}
             <dl className="profil kecil-profil">
               <dt>Jenis kelamin</dt>
               <dd>{a.jenisKelamin ? JENIS_KELAMIN_LABEL[a.jenisKelamin] : "–"}</dd>
@@ -213,6 +216,22 @@ export function DaftarAtlet({ bukaReadiness }: { bukaReadiness?(athleteId: strin
         </Jendela>
       )}
     </>
+  );
+}
+
+/** Cincin readiness hari ini di kartu atlet. */
+function ReadinessKartu({ athleteId }: { athleteId: string }) {
+  const { svc, actor, hariIni } = useApp();
+  const r = svc.skorHarian(actor, { athleteId, tanggal: hariIni });
+  const status = r.ok ? r.data.status : "abu_abu";
+  return (
+    <div className="kartu-readiness">
+      <CincinReadiness ukuran={84} skor={r.ok ? r.data.readiness : null} status={status} />
+      <div className="stack">
+        <StatusBadge status={status} />
+        <span className="muted kecil">{r.ok ? r.data.statusReason : "Check-in hari ini belum terisi."}</span>
+      </div>
+    </div>
   );
 }
 

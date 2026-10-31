@@ -7,6 +7,9 @@ import type {
   DailyScore,
   DataWearable,
   GuardianApproval,
+  IntegrasiGarmin,
+  KoneksiGarmin,
+  Laporan,
   Membership,
   Notification,
   Sesi,
@@ -34,8 +37,8 @@ export interface StoragePort {
   listAthletesByTeam(teamId: string): Athlete[];
   /**
    * Menghapus permanen seorang Atlet beserta seluruh datanya: keanggotaan,
-   * persetujuan, Check-in, Sesi, Skor Harian, Data Wearable, dan Catatan
-   * tentang Atlet itu.
+   * persetujuan, Check-in, Sesi, Skor Harian, Data Wearable, Laporan, dan
+   * Catatan tentang Atlet itu.
    * Log Audit tidak ikut dihapus.
    */
   deleteAthleteCascade(athleteId: string): void;
@@ -82,6 +85,20 @@ export interface StoragePort {
   getDataWearable(athleteId: string, tanggal: string): DataWearable | undefined;
   saveDataWearable(d: DataWearable): void;
   listDataWearableByAthlete(athleteId: string, fromTanggal: string, toTanggal: string): DataWearable[];
+
+  // Integrasi Garmin
+  getIntegrasiGarmin(teamId: string): IntegrasiGarmin | undefined;
+  saveIntegrasiGarmin(i: IntegrasiGarmin): void;
+  /** Rahasia disimpan terpisah dari konfigurasi (di produksi: secret manager), hanya bisa ditulis. */
+  simpanRahasia(kunci: string, nilai: string): void;
+  getKoneksiGarmin(athleteId: string): KoneksiGarmin | undefined;
+  saveKoneksiGarmin(k: KoneksiGarmin): void;
+  deleteKoneksiGarmin(athleteId: string): void;
+
+  // Laporan atlet
+  getLaporan(laporanId: string): Laporan | undefined;
+  saveLaporan(l: Laporan): void;
+  listLaporanByTeam(teamId: string): Laporan[];
 
   // Catatan & Thread
   getCatatan(catatanId: string): Catatan | undefined;

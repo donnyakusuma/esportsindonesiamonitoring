@@ -8,7 +8,9 @@ import { HalamanStaf, hitungKotakMasuk, MENU_STAF } from "./pages/staf.js";
 import { type AppCtx, AppContext, fmtTanggal, Ikon, inisial, labelOtoritas, labelPeran, Logo } from "./ui.js";
 
 const IKON_MENU: Record<string, string> = {
-  hari_ini: "check",
+  hari_ini: "papan",
+  checkin: "check",
+  lapor: "lapor",
   tren: "tren",
   catatan: "catatan",
   persetujuan: "perisai",
@@ -20,6 +22,7 @@ const IKON_MENU: Record<string, string> = {
   anggota: "tim",
   roster: "atlet",
   atlet: "atlet",
+  integrasi: "tautan",
 };
 
 type Halaman =
