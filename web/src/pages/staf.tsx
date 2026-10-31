@@ -5,6 +5,7 @@ import { KATEGORI_CATATAN_VALID } from "../../../src/modules/kolaborasi.js";
 import { tambahHari } from "../../../src/domain/tanggal.js";
 import { CatatanItem, Linimasa, TulisCatatan } from "../bersama.js";
 import { TrenChart } from "../TrenChart.js";
+import { DaftarAtlet } from "./roster.js";
 import {
   CincinReadiness,
   dariInputWaktu,
@@ -27,6 +28,7 @@ import {
 
 export type HalamanStaf =
   | { id: "papan" }
+  | { id: "roster" }
   | { id: "atlet"; athleteId: string }
   | { id: "catatan" }
   | { id: "sesi" }
@@ -35,6 +37,7 @@ export type HalamanStaf =
 
 export const MENU_STAF: { id: HalamanStaf["id"]; label: string }[] = [
   { id: "papan", label: "Papan Tim" },
+  { id: "roster", label: "Atlet" },
   { id: "catatan", label: "Catatan" },
   { id: "sesi", label: "Jadwalkan Sesi" },
   { id: "kotak_masuk", label: "Kotak Masuk" },
@@ -45,6 +48,8 @@ export function HalamanStaf({ halaman, pindah }: { halaman: HalamanStaf; pindah(
   switch (halaman.id) {
     case "papan":
       return <PapanTim buka={(athleteId) => pindah({ id: "atlet", athleteId })} />;
+    case "roster":
+      return <DaftarAtlet bukaReadiness={(athleteId) => pindah({ id: "atlet", athleteId })} />;
     case "atlet":
       return <DetailAtlet athleteId={halaman.athleteId} kembali={() => pindah({ id: "papan" })} />;
     case "catatan":
@@ -74,12 +79,12 @@ function zTeks(k: KomponenSkor | undefined): string {
 }
 
 function PapanTim({ buka }: { buka(athleteId: string): void }) {
-  const { svc, actor, hariIni } = useApp();
+  const { svc, actor, hariIni, kelompok, kelompokAtlet } = useApp();
   const [tanggal, setTanggal] = useState(hariIni);
   const [pilih, setPilih] = useState<string | null>(null);
   const r = svc.papanTim(actor, { tanggal });
   const info = svc.infoTim(actor);
-  const baris: BarisPapanTim[] = r.ok ? r.data : [];
+  const baris: BarisPapanTim[] = r.ok ? r.data.filter((b) => !kelompok || kelompokAtlet.get(b.athleteId) === kelompok) : [];
   const dengan = (s: StatusReadiness) => baris.filter((b) => b.status === s);
   const sudah = baris.filter((b) => b.sudahCheckIn).length;
   const berskor = baris.filter((b) => b.readiness !== null);
@@ -281,11 +286,11 @@ function PapanTim({ buka }: { buka(athleteId: string): void }) {
 
 /** Rata-rata readiness tim per hari, 7 hari sampai tanggal terpilih. */
 function TrenTim({ sampai, ambang }: { sampai: string; ambang: number }) {
-  const { svc, actor } = useApp();
+  const { svc, actor, kelompok, kelompokAtlet } = useApp();
   const hari = Array.from({ length: 7 }, (_, i) => tambahHari(sampai, i - 6));
   const nilai = hari.map((t) => {
     const r = svc.papanTim(actor, { tanggal: t });
-    const ada = r.ok ? r.data.filter((b) => b.readiness !== null) : [];
+    const ada = r.ok ? r.data.filter((b) => b.readiness !== null && (!kelompok || kelompokAtlet.get(b.athleteId) === kelompok)) : [];
     return ada.length ? ada.reduce((s, b) => s + b.readiness!, 0) / ada.length : null;
   });
   const ada = nilai.filter((v): v is number => v !== null);

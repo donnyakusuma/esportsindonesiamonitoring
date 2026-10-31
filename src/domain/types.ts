@@ -32,11 +32,17 @@ export interface Team {
   scoreConfig?: Partial<ScoreConfig>;
 }
 
+export type JenisKelamin = "laki_laki" | "perempuan";
+
 export interface Athlete {
   id: string;
   teamId: string;
   nama: string;
   tanggalLahir: string; // ISO date YYYY-MM-DD
+  tempatLahir?: string;
+  jenisKelamin?: JenisKelamin;
+  /** Kelompok "Number of event" tempat Atlet bergabung, mis. "Divisi MLBB". */
+  kelompok?: string;
   guardianUserId?: string;
   archived: boolean;
 }

@@ -10,6 +10,7 @@ import type {
   SubPeranTimSupport,
   Visibilitas,
 } from "../../src/index.js";
+import type { AkunStore } from "./akun.js";
 import { TIMEZONE } from "./demo.js";
 
 export interface AppCtx {
@@ -20,6 +21,15 @@ export interface AppCtx {
   versi: number;
   segarkan(): void;
   nama(userId: string): string;
+  /** Kelompok "Number of event" yang sedang dipilih di sidebar; "" berarti semua kelompok. */
+  kelompok: string;
+  /** Semua kelompok yang dimiliki Atlet, berurutan abjad. */
+  daftarKelompok: string[];
+  /** Kelompok milik tiap Atlet (athleteId -> kelompok). */
+  kelompokAtlet: Map<string, string>;
+  pilihKelompok(k: string): void;
+  /** Akun masuk atlet; dikelola Manajer Tim lewat form profil atlet. */
+  akun: AkunStore;
 }
 
 export const AppContext = createContext<AppCtx | null>(null);
@@ -132,6 +142,8 @@ const IKON: Record<string, string> = {
   catatan: "M3 2h7l3 3v9H3zM5.5 7h5M5.5 10h5",
   kotak: "M1.5 9l2-6h9l2 6v4.5h-13zM1.5 9h4l1 2h3l1-2h4",
   daftar: "M5.5 4h8M5.5 8h8M5.5 12h8M2.5 4h.5M2.5 8h.5M2.5 12h.5",
+  keluar: "M6 2.5H3v11h3M10.5 5l3 3-3 3M13.5 8H6",
+  tim: "M6 7a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM1.5 13.5a4.5 4.5 0 019 0M11 2.2a2.5 2.5 0 010 4.6M12.5 9.3a4.5 4.5 0 012 4.2",
 };
 
 export function Ikon({ nama }: { nama: string }) {

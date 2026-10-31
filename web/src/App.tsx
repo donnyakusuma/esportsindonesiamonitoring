@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Actor } from "../../src/index.js";
 import { buatDemo, hariIniTim, NAMA } from "./demo.js";
+import { Masuk, type Sebagai } from "./Masuk.js";
 import { HalamanAtlet, MENU_ATLET } from "./pages/atlet.js";
 import { HalamanManajer, MENU_MANAJER } from "./pages/manajer.js";
 import { HalamanStaf, hitungKotakMasuk, MENU_STAF } from "./pages/staf.js";
@@ -16,7 +17,9 @@ const IKON_MENU: Record<string, string> = {
   sesi: "sesi",
   kotak_masuk: "kotak",
   konfigurasi: "gerigi",
-  anggota: "atlet",
+  anggota: "tim",
+  roster: "atlet",
+  atlet: "atlet",
 };
 
 type Halaman =
@@ -26,23 +29,80 @@ type Halaman =
 
 function halamanAwal(a: Actor): Halaman {
   if (a.peran === "atlet") return { peran: "atlet", h: "hari_ini" };
-  if (a.peran === "manajer_tim") return { peran: "manajer", h: "anggota" };
+  if (a.peran === "manajer_tim") return { peran: "manajer", h: "atlet" };
   return { peran: "staf", h: { id: "papan" } };
 }
 
+const KUNCI_SESI = "readiness-masuk";
+
+/** Siapa yang sedang masuk: "admin" (semua persona) atau satu atlet (hanya dirinya). */
+function bacaSesi(): Sebagai | null {
+  const mentah = sessionStorage.getItem(KUNCI_SESI);
+  if (mentah === "1" || mentah === "admin") return "admin";
+  if (mentah?.startsWith("atlet:")) return { athleteId: mentah.slice(6) };
+  return null;
+}
+
 export function App() {
+  // Data demo dibuat sekali per muat halaman, jadi tetap ada setelah keluar lalu masuk lagi.
   const demo = useMemo(buatDemo, []);
+  const [sesi, setSesi] = useState<Sebagai | null>(() => {
+    const s = bacaSesi();
+    // Akun atlet yang dibuat sebelum muat ulang hilang bersama data demo.
+    return s && s !== "admin" && !demo.daftarPersona().some((p) => p.userId === s.athleteId) ? null : s;
+  });
+
+  if (!sesi) {
+    return (
+      <Masuk
+        periksa={(user, sandi) => {
+          const h = demo.akun.periksa(user, sandi);
+          if (h.ok && h.sebagai !== "admin") {
+            const aktif = demo.daftarPersona().some((p) => p.userId === (h.sebagai as { athleteId: string }).athleteId);
+            if (!aktif) return { ok: false, alasan: "Akun atlet ini diarsipkan dan tidak bisa masuk." };
+          }
+          return h;
+        }}
+        masuk={(sebagai) => {
+          sessionStorage.setItem(KUNCI_SESI, sebagai === "admin" ? "admin" : `atlet:${sebagai.athleteId}`);
+          setSesi(sebagai);
+        }}
+      />
+    );
+  }
+  return (
+    <Aplikasi
+      demo={demo}
+      terkunci={sesi === "admin" ? null : sesi.athleteId}
+      keluar={() => {
+        sessionStorage.removeItem(KUNCI_SESI);
+        setSesi(null);
+      }}
+    />
+  );
+}
+
+function Aplikasi({ demo, terkunci, keluar }: { demo: ReturnType<typeof buatDemo>; terkunci: string | null; keluar(): void }) {
   const [versi, setVersi] = useState(0);
-  const persona = demo.daftarPersona();
+  // Akun atlet hanya bisa menjadi dirinya sendiri; admin bebas memilih persona.
+  const persona = demo.daftarPersona().filter((p) => !terkunci || p.userId === terkunci);
   // ?sebagai=<userId> membuka aplikasi langsung sebagai persona tertentu.
-  const [userId, setUserId] = useState(() => new URLSearchParams(location.search).get("sebagai") ?? "budi");
+  const [userId, setUserId] = useState(() => terkunci ?? new URLSearchParams(location.search).get("sebagai") ?? "budi");
   const actor = persona.find((p) => p.userId === userId) ?? persona[0]!;
   const [halaman, setHalaman] = useState<Halaman>(() => halamanAwal(actor));
 
-  const namaAtlet = useMemo(() => {
+  const { namaAtlet, kelompokAtlet, daftarKelompok } = useMemo(() => {
     const r = demo.svc.anggotaTim(demo.manajer);
-    return new Map(r.ok ? r.data.atlet.map((a) => [a.id, a.nama]) : []);
+    const atlet = r.ok ? r.data.atlet : [];
+    return {
+      namaAtlet: new Map(atlet.map((a) => [a.id, a.nama])),
+      kelompokAtlet: new Map(atlet.flatMap((a) => (a.kelompok ? [[a.id, a.kelompok] as [string, string]] : []))),
+      daftarKelompok: [...new Set(atlet.filter((a) => !a.archived && a.kelompok).map((a) => a.kelompok!))].sort((a, b) => a.localeCompare(b)),
+    };
   }, [demo, versi]);
+  const [pilihan, setPilihan] = useState("");
+  // Kelompok yang sudah tidak punya atlet aktif otomatis kembali ke "semua".
+  const kelompok = daftarKelompok.includes(pilihan) ? pilihan : "";
 
   const ctx: AppCtx = {
     svc: demo.svc,
@@ -50,7 +110,13 @@ export function App() {
     hariIni: hariIniTim(),
     versi,
     segarkan: () => setVersi((v) => v + 1),
-    nama: (id) => NAMA[id] ?? namaAtlet.get(id) ?? id,
+    // Nama atlet diambil dari profil agar perubahan nama langsung terlihat di semua halaman.
+    nama: (id) => namaAtlet.get(id) ?? NAMA[id] ?? id,
+    kelompok,
+    daftarKelompok,
+    kelompokAtlet,
+    pilihKelompok: setPilihan,
+    akun: demo.akun,
   };
 
   function gantiPersona(id: string) {
@@ -70,9 +136,22 @@ export function App() {
             <Logo ukuran={36} />
             <div>
               <b>Esports Indonesia</b>
-              <span>Divisi MLBB · Tahap 1</span>
+              <span>Prototipe · Tahap 1</span>
             </div>
           </div>
+          {actor.peran !== "atlet" && (
+            <label className="kelompok">
+              <span>Number of event</span>
+              <select value={kelompok} onChange={(e) => setPilihan(e.target.value)}>
+                <option value="">Semua kelompok</option>
+                {daftarKelompok.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <nav className="nav">
             {halaman.peran === "atlet" &&
               MENU_ATLET.map((m) => (
@@ -112,6 +191,7 @@ export function App() {
         <div className="main">
           <header className="top">
             <span className="tanggal">{fmtTanggal(ctx.hariIni)}</span>
+            {!terkunci && (
             <label className="persona">
               <span>Masuk sebagai</span>
               <select value={actor.userId} onChange={(e) => gantiPersona(e.target.value)}>
@@ -122,6 +202,7 @@ export function App() {
                 ))}
               </select>
             </label>
+            )}
             <div className="siapa">
               <span className="avatar">{inisial(ctx.nama(actor.userId))}</span>
               <div>
@@ -129,6 +210,10 @@ export function App() {
                 <div className="kecil">{labelPeran(actor)}</div>
               </div>
             </div>
+            <button className="keluar" onClick={keluar}>
+              <Ikon nama="keluar" />
+              Keluar
+            </button>
           </header>
           <main className="konten" key={actor.userId}>
             {halaman.peran === "atlet" && <HalamanAtlet halaman={halaman.h} pindah={(h) => setHalaman({ peran: "atlet", h })} />}

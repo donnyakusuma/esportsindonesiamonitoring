@@ -1,6 +1,7 @@
 import type {
   Actor,
   Athlete,
+  JenisKelamin,
   AuditEntry,
   Catatan,
   CheckIn,
@@ -75,6 +76,24 @@ export interface BarisPapanTim {
   readiness: number | null;
   wellnessScore: number | null;
   komponen: DailyScore["komponen"];
+}
+
+export interface ProfilAtletInput {
+  tempatLahir?: string;
+  jenisKelamin?: JenisKelamin;
+  kelompok?: string;
+}
+
+function validasiProfilAtlet(p: { nama?: string; tanggalLahir?: string; jenisKelamin?: string; kelompok?: string }): string | null {
+  if (p.nama !== undefined && !p.nama.trim()) return "Nama lengkap wajib diisi.";
+  if (p.tanggalLahir !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(p.tanggalLahir)) {
+    return "Tanggal lahir wajib diisi dengan format YYYY-MM-DD.";
+  }
+  if (p.jenisKelamin !== undefined && p.jenisKelamin !== "laki_laki" && p.jenisKelamin !== "perempuan") {
+    return "Jenis kelamin tidak dikenal.";
+  }
+  if (p.kelompok !== undefined && !p.kelompok.trim()) return "Number of event (kelompok) wajib diisi.";
+  return null;
 }
 
 const URUTAN_STATUS: Record<StatusReadiness, number> = {
@@ -175,19 +194,21 @@ export class MonitoringService {
 
   daftarkanAtlet(
     actor: Actor,
-    payload: { athleteId?: string; nama: string; tanggalLahir: string; guardianUserId?: string }
+    payload: { athleteId?: string; nama: string; tanggalLahir: string; guardianUserId?: string } & ProfilAtletInput
   ): CommandResult<Athlete> {
     const cek = cekPeran(actor, ["manajer_tim"]);
     if (!cek.diizinkan) return fail(cek.alasan!);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(payload.tanggalLahir)) {
-      return fail("Tanggal lahir wajib diisi dengan format YYYY-MM-DD.");
-    }
+    const v = validasiProfilAtlet(payload);
+    if (v) return fail(v);
     const id = payload.athleteId ?? this.storage.nextId("atlet");
     const athlete: Athlete = {
       id,
       teamId: actor.teamId,
-      nama: payload.nama,
+      nama: payload.nama.trim(),
       tanggalLahir: payload.tanggalLahir,
+      tempatLahir: payload.tempatLahir?.trim() || undefined,
+      jenisKelamin: payload.jenisKelamin,
+      kelompok: payload.kelompok?.trim(),
       guardianUserId: payload.guardianUserId,
       archived: false,
     };
@@ -195,6 +216,35 @@ export class MonitoringService {
     this.storage.saveMembership({ userId: id, teamId: actor.teamId, peran: "atlet", athleteId: id });
     this.audit(actor, "daftarkanAtlet", "athlete", id);
     return ok(athlete);
+  }
+
+  /** Mengubah data profil Atlet. Field yang tidak dikirim tetap seperti semula. */
+  ubahProfilAtlet(
+    actor: Actor,
+    payload: { athleteId: string; nama?: string; tanggalLahir?: string; guardianUserId?: string } & ProfilAtletInput
+  ): CommandResult<Athlete> {
+    const cek = cekPeran(actor, ["manajer_tim"]);
+    if (!cek.diizinkan) return fail(cek.alasan!);
+    const athlete = this.storage.getAthlete(payload.athleteId);
+    if (!athlete || athlete.teamId !== actor.teamId) return fail("Atlet tidak ditemukan.");
+    if (athlete.archived) return fail("Atlet yang sudah diarsipkan tidak bisa diubah.");
+    const baru: Athlete = {
+      ...athlete,
+      nama: payload.nama !== undefined ? payload.nama.trim() : athlete.nama,
+      tanggalLahir: payload.tanggalLahir ?? athlete.tanggalLahir,
+      tempatLahir: payload.tempatLahir !== undefined ? payload.tempatLahir.trim() || undefined : athlete.tempatLahir,
+      jenisKelamin: payload.jenisKelamin ?? athlete.jenisKelamin,
+      kelompok: payload.kelompok !== undefined ? payload.kelompok.trim() : athlete.kelompok,
+      guardianUserId: payload.guardianUserId !== undefined ? payload.guardianUserId || undefined : athlete.guardianUserId,
+    };
+    const v = validasiProfilAtlet(baru);
+    if (v) return fail(v);
+    const berubah = (["nama", "tanggalLahir", "tempatLahir", "jenisKelamin", "kelompok", "guardianUserId"] as const).filter(
+      (k) => baru[k] !== athlete[k]
+    );
+    this.storage.saveAthlete(baru);
+    this.audit(actor, "ubahProfilAtlet", "athlete", athlete.id, berubah.join(", "));
+    return ok(baru);
   }
 
   arsipkanAtlet(actor: Actor, payload: { athleteId: string }): CommandResult<Athlete> {
@@ -206,6 +256,34 @@ export class MonitoringService {
     this.storage.saveAthlete(updated);
     this.audit(actor, "arsipkanAtlet", "athlete", athlete.id);
     return ok(updated);
+  }
+
+  /**
+   * Menghapus permanen Atlet dan seluruh datanya. Berbeda dengan arsip, ini
+   * tidak bisa dibatalkan; Log Audit tetap mencatat siapa yang menghapus.
+   */
+  hapusAtlet(actor: Actor, payload: { athleteId: string }): CommandResult<{ id: string; nama: string }> {
+    const cek = cekPeran(actor, ["manajer_tim"]);
+    if (!cek.diizinkan) return fail(cek.alasan!);
+    const athlete = this.storage.getAthlete(payload.athleteId);
+    if (!athlete || athlete.teamId !== actor.teamId) return fail("Atlet tidak ditemukan.");
+    this.storage.deleteAthleteCascade(athlete.id);
+    this.audit(actor, "hapusAtlet", "athlete", athlete.id, athlete.nama);
+    return ok({ id: athlete.id, nama: athlete.nama });
+  }
+
+  /** Menghapus anggota staf (Staf Pelatih atau Tim Support) dari Tim. */
+  hapusAnggota(actor: Actor, payload: { userId: string }): CommandResult<Membership> {
+    const cek = cekPeran(actor, ["manajer_tim"]);
+    if (!cek.diizinkan) return fail(cek.alasan!);
+    if (payload.userId === actor.userId) return fail("Anda tidak bisa menghapus akun sendiri.");
+    const m = this.storage.getMembership(payload.userId, actor.teamId);
+    if (!m) return fail("Anggota tidak ditemukan di Tim ini.");
+    if (m.peran === "atlet") return fail("Gunakan hapusAtlet untuk menghapus Atlet.");
+    if (m.peran === "manajer_tim") return fail("Manajer Tim tidak bisa dihapus.");
+    this.storage.deleteMembership(m.userId, m.teamId);
+    this.audit(actor, "hapusAnggota", "membership", m.userId, m.peran);
+    return ok(m);
   }
 
   /** Data Tim beserta konfigurasi skor yang berlaku. Bisa dibaca semua anggota. */

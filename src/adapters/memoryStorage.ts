@@ -50,6 +50,26 @@ export class MemoryStorage implements StoragePort {
     return [...this.memberships.values()].filter((m) => m.teamId === teamId);
   }
 
+  deleteMembership(userId: string, teamId: string): void {
+    this.memberships.delete(`${userId}:${teamId}`);
+  }
+
+  deleteAthleteCascade(athleteId: string): void {
+    this.athletes.delete(athleteId);
+    for (const [k, m] of this.memberships) if (m.athleteId === athleteId) this.memberships.delete(k);
+    this.guardianApprovals.delete(athleteId);
+    for (const map of [this.consents, this.checkIns, this.dailyScores]) {
+      for (const k of map.keys()) if (k.startsWith(`${athleteId}:`)) map.delete(k);
+    }
+    for (const [k, s] of this.sesiList) if (s.athleteId === athleteId) this.sesiList.delete(k);
+    for (const [k, c] of this.catatanList) {
+      if (c.athleteId !== athleteId) continue;
+      this.catatanList.delete(k);
+      this.threadReplies.delete(k);
+    }
+    this.notifications.delete(athleteId);
+  }
+
   getAthlete(athleteId: string): Athlete | undefined {
     return this.athletes.get(athleteId);
   }

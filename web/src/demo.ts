@@ -1,7 +1,8 @@
-import type { Actor, CheckInItems, CommandResult, JenisSesi, Membership, PetaNyeri } from "../../src/index.js";
+import type { Actor, CheckInItems, CommandResult, JenisKelamin, JenisSesi, Membership, PetaNyeri } from "../../src/index.js";
 import { MemoryNotificationPort, MemoryStorage, MonitoringService } from "../../src/index.js";
 import { tambahHari, tanggalDiZona } from "../../src/domain/tanggal.js";
 import type { Clock } from "../../src/ports/clock.js";
+import { AkunStore } from "./akun.js";
 
 /**
  * Data demo untuk prototipe UI. Belum ada HTTP API maupun penyimpanan
@@ -78,6 +79,9 @@ const TANPA_NYERI: PetaNyeri = {
 interface ProfilAtlet {
   id: string;
   tanggalLahir: string;
+  tempatLahir: string;
+  jenisKelamin: JenisKelamin;
+  kelompok: string;
   wali?: string;
   /** Berapa hari lalu Atlet bergabung. */
   bergabung: number;
@@ -87,9 +91,12 @@ interface ProfilAtlet {
 }
 
 const PROFIL: ProfilAtlet[] = [
-  { id: "raka", tanggalLahir: "2003-04-11", bergabung: 21, hariIni: null },
+  { id: "raka", tanggalLahir: "2003-04-11", tempatLahir: "Jakarta", jenisKelamin: "laki_laki", kelompok: "Divisi MLBB", bergabung: 21, hariIni: null },
   {
     id: "fajar",
+    tempatLahir: "Bandung",
+    jenisKelamin: "laki_laki",
+    kelompok: "Divisi MLBB",
     tanggalLahir: "2002-09-02",
     bergabung: 21,
     hariIni: { wellness: [2, 2, 3, 2, 2, 3], tidur: 5, kualitas: 2, nyeri: { pergelangan: 5, tangan: 3 } },
@@ -97,12 +104,18 @@ const PROFIL: ProfilAtlet[] = [
   },
   {
     id: "yoga",
+    tempatLahir: "Yogyakarta",
+    jenisKelamin: "laki_laki",
+    kelompok: "Divisi MLBB",
     tanggalLahir: "2004-01-23",
     bergabung: 21,
     hariIni: { wellness: [3, 3, 4, 3, 3, 4], tidur: 6.5, kualitas: 3 },
   },
   {
     id: "dinda",
+    tempatLahir: "Surabaya",
+    jenisKelamin: "perempuan",
+    kelompok: "Akademi MLBB",
     tanggalLahir: "2010-05-12",
     wali: "wali_dinda",
     bergabung: 21,
@@ -110,12 +123,18 @@ const PROFIL: ProfilAtlet[] = [
   },
   {
     id: "bima",
+    tempatLahir: "Medan",
+    jenisKelamin: "laki_laki",
+    kelompok: "Divisi MLBB",
     tanggalLahir: "2001-12-30",
     bergabung: 21,
     hariIni: { wellness: [4, 4, 4, 4, 5, 4], tidur: 7.5, kualitas: 4 },
   },
   {
     id: "kevin",
+    tempatLahir: "Makassar",
+    jenisKelamin: "laki_laki",
+    kelompok: "Akademi MLBB",
     tanggalLahir: "2005-07-08",
     bergabung: 4,
     hariIni: { wellness: [4, 3, 4, 4, 4, 4], tidur: 7, kualitas: 4 },
@@ -127,6 +146,8 @@ const JENIS_ACAK: JenisSesi[] = ["scrim", "scrim", "ranked", "individu", "review
 export interface Demo {
   svc: MonitoringService;
   manajer: Actor;
+  /** Akun masuk atlet (halaman landing). */
+  akun: AkunStore;
   /** Semua anggota Tim, dipakai sebagai daftar "Masuk sebagai". */
   daftarPersona(): Actor[];
 }
@@ -135,6 +156,7 @@ export function buatDemo(): Demo {
   const storage = new MemoryStorage();
   const clock = new DemoClock();
   const svc = new MonitoringService(storage, clock, new MemoryNotificationPort());
+  const akun = new AkunStore();
   const rand = mulberry32(2026);
   const acak = (min: number, max: number) => min + Math.floor(rand() * (max - min + 1));
 
@@ -161,12 +183,31 @@ export function buatDemo(): Demo {
         athleteId: p.id,
         nama: NAMA[p.id]!,
         tanggalLahir: p.tanggalLahir,
+        tempatLahir: p.tempatLahir,
+        jenisKelamin: p.jenisKelamin,
+        kelompok: p.kelompok,
         guardianUserId: p.wali,
       })
     );
+    akun.simpan(p.id, p.id, `${p.id}123`);
     wajib(svc.berikanPersetujuan(atlet(p.id), { jenis: "kuesioner" }));
     if (p.wali) wajib(svc.setujuiSebagaiWali({ athleteId: p.id, guardianUserId: p.wali }));
   }
+
+  // Mantan pemain yang sudah keluar dari Tim, untuk contoh Atlet yang diarsipkan.
+  clock.fixed = wib(tambahHari(hariIni, -20), "07:00");
+  wajib(
+    svc.daftarkanAtlet(manajer, {
+      athleteId: "rizal",
+      nama: "Rizal Hidayat",
+      tanggalLahir: "2000-10-17",
+      tempatLahir: "Palembang",
+      jenisKelamin: "laki_laki",
+      kelompok: "Divisi MLBB",
+    })
+  );
+  wajib(svc.arsipkanAtlet(manajer, { athleteId: "rizal" }));
+  akun.simpan("rizal", "rizal", "rizal123");
 
   const butirAcak = (dasar: number): number => Math.max(1, Math.min(5, dasar + acak(-1, 1)));
 
@@ -314,6 +355,7 @@ export function buatDemo(): Demo {
   return {
     svc,
     manajer,
+    akun,
     daftarPersona() {
       const r = svc.anggotaTim(manajer);
       if (!r.ok) return [];

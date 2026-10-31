@@ -1,6 +1,6 @@
 export * from "./domain/types.js";
 export { MonitoringService, resolveScoreConfig } from "./service/monitoringService.js";
-export type { BarisPapanTim, CheckInPayload } from "./service/monitoringService.js";
+export type { BarisPapanTim, CheckInPayload, ProfilAtletInput } from "./service/monitoringService.js";
 export type { CommandResult } from "./service/result.js";
 export type { StoragePort } from "./ports/storage.js";
 export type { Clock } from "./ports/clock.js";

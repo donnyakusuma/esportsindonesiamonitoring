@@ -25,11 +25,18 @@ export interface StoragePort {
   getMembership(userId: string, teamId: string): Membership | undefined;
   saveMembership(m: Membership): void;
   listMembershipsByTeam(teamId: string): Membership[];
+  deleteMembership(userId: string, teamId: string): void;
 
   // Athlete
   getAthlete(athleteId: string): Athlete | undefined;
   saveAthlete(a: Athlete): void;
   listAthletesByTeam(teamId: string): Athlete[];
+  /**
+   * Menghapus permanen seorang Atlet beserta seluruh datanya: keanggotaan,
+   * persetujuan, Check-in, Sesi, Skor Harian, dan Catatan tentang Atlet itu.
+   * Log Audit tidak ikut dihapus.
+   */
+  deleteAthleteCascade(athleteId: string): void;
 
   // Guardian approval
   getGuardianApproval(athleteId: string): GuardianApproval | undefined;

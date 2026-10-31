@@ -1,11 +1,12 @@
 import { useState } from "react";
 import type { Peran, SubPeranTimSupport } from "../../../src/index.js";
-import { usiaPadaTanggal } from "../../../src/modules/akses.js";
-import { fmtTanggal, fmtWaktu, Info, Kosong, labelPeran, PERAN_LABEL, Pesan, SUBPERAN_LABEL, useAksi, useApp } from "../ui.js";
+import { DaftarAtlet } from "./roster.js";
+import { fmtWaktu, Info, Kosong, labelPeran, PERAN_LABEL, Pesan, SUBPERAN_LABEL, useAksi, useApp } from "../ui.js";
 
-export type HalamanManajer = "anggota" | "audit";
+export type HalamanManajer = "atlet" | "anggota" | "audit";
 
 export const MENU_MANAJER: { id: HalamanManajer; label: string }[] = [
+  { id: "atlet", label: "Atlet" },
   { id: "anggota", label: "Anggota Tim" },
   { id: "audit", label: "Log Audit" },
 ];
@@ -26,6 +27,7 @@ export function HalamanManajer({ halaman }: { halaman: HalamanManajer }) {
       </>
     );
   }
+  if (halaman === "atlet") return <DaftarAtlet />;
   return <Anggota />;
 }
 
@@ -34,19 +36,18 @@ export function HalamanManajer({ halaman }: { halaman: HalamanManajer }) {
 const PERAN_STAF: Peran[] = ["staf_pelatih", "tim_support", "manajer_tim"];
 
 function Anggota() {
-  const { svc, actor, nama, hariIni } = useApp();
+  const { svc, actor, nama } = useApp();
   const { umpan, jalankan } = useAksi();
   const r = svc.anggotaTim(actor);
   if (!r.ok) return <Pesan umpan={{ jenis: "gagal", teks: r.reason }} />;
   const staf = r.data.anggota.filter((m) => m.peran !== "atlet");
-  const atlet = [...r.data.atlet].sort((a, b) => Number(a.archived) - Number(b.archived) || a.nama.localeCompare(b.nama));
 
   return (
     <>
       <div className="judul">
         <div>
           <h1>Anggota Tim</h1>
-          <p>Kelola staf dan atlet Divisi MLBB.</p>
+          <p>Kelola staf Divisi MLBB. Profil atlet dikelola di menu Atlet.</p>
         </div>
       </div>
       <Info>
@@ -64,6 +65,7 @@ function Anggota() {
                 <tr>
                   <th>Nama</th>
                   <th>Peran</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -92,53 +94,18 @@ function Anggota() {
                         </select>
                       )}
                     </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div className="card">
-          <h2>Undang staf</h2>
-          <FormUndang />
-        </div>
-      </div>
-
-      <div className="grid-2">
-        <div className="card">
-          <h2>Atlet</h2>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Nama</th>
-                  <th>Usia</th>
-                  <th>Wali</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {atlet.map((a) => (
-                  <tr key={a.id} style={a.archived ? { opacity: 0.55 } : undefined}>
-                    <td>
-                      <b>{a.nama}</b>
-                      <div className="muted kecil">Lahir {fmtTanggal(a.tanggalLahir)}</div>
-                    </td>
-                    <td className="num">{usiaPadaTanggal(a.tanggalLahir, hariIni)}</td>
-                    <td>{a.guardianUserId ? nama(a.guardianUserId) : <span className="muted">–</span>}</td>
                     <td style={{ textAlign: "right" }}>
-                      {a.archived ? (
-                        <span className="chip">Diarsipkan</span>
-                      ) : (
+                      {m.userId !== actor.userId && m.peran !== "manajer_tim" && (
                         <button
                           className="btn bahaya kecil"
+                          aria-label={`Hapus ${nama(m.userId)}`}
                           onClick={() => {
-                            if (confirm(`Arsipkan ${a.nama}? Atlet tidak akan muncul lagi di Papan Tim dan tidak bisa Check-in.`)) {
-                              jalankan(svc.arsipkanAtlet(actor, { athleteId: a.id }), `${a.nama} diarsipkan.`);
+                            if (confirm(`Hapus ${nama(m.userId)} (${labelPeran(m)}) dari Tim? Akun ini tidak bisa lagi masuk ke Tim.`)) {
+                              jalankan(svc.hapusAnggota(actor, { userId: m.userId }), `${nama(m.userId)} dihapus dari Tim.`);
                             }
                           }}
                         >
-                          Arsipkan
+                          Hapus
                         </button>
                       )}
                     </td>
@@ -149,8 +116,8 @@ function Anggota() {
           </div>
         </div>
         <div className="card">
-          <h2>Daftarkan atlet</h2>
-          <FormAtlet />
+          <h2>Undang staf</h2>
+          <FormUndang />
         </div>
       </div>
     </>
@@ -212,49 +179,6 @@ function FormUndang() {
   );
 }
 
-function FormAtlet() {
-  const { svc, actor } = useApp();
-  const { umpan, jalankan } = useAksi();
-  const [namaAtlet, setNamaAtlet] = useState("");
-  const [lahir, setLahir] = useState("2006-01-01");
-  const [wali, setWali] = useState("");
-  return (
-    <div className="stack">
-      <div className="fields">
-        <label className="field">
-          Nama lengkap
-          <input type="text" value={namaAtlet} onChange={(e) => setNamaAtlet(e.target.value)} />
-        </label>
-        <label className="field">
-          Tanggal lahir
-          <input type="date" value={lahir} onChange={(e) => setLahir(e.target.value)} />
-        </label>
-        <label className="field">
-          ID wali
-          <span className="hint">Wajib untuk atlet di bawah 18 tahun</span>
-          <input type="text" value={wali} onChange={(e) => setWali(e.target.value.trim())} placeholder="mis. wali_andi" />
-        </label>
-      </div>
-      <div>
-        <button
-          className="btn utama"
-          onClick={() => {
-            if (!namaAtlet.trim()) return;
-            const hasil = svc.daftarkanAtlet(actor, { nama: namaAtlet.trim(), tanggalLahir: lahir, guardianUserId: wali || undefined });
-            if (jalankan(hasil, `${namaAtlet.trim()} terdaftar. Atlet perlu memberikan persetujuan data sebelum Check-in.`)) {
-              setNamaAtlet("");
-              setWali("");
-            }
-          }}
-        >
-          Daftarkan
-        </button>
-      </div>
-      <Pesan umpan={umpan} />
-    </div>
-  );
-}
-
 // ───────────────────────── Log Audit ─────────────────────────
 
 const AKSI_LABEL: Record<string, string> = {
@@ -262,6 +186,9 @@ const AKSI_LABEL: Record<string, string> = {
   ubahPeran: "Mengubah peran",
   daftarkanAtlet: "Mendaftarkan atlet",
   arsipkanAtlet: "Mengarsipkan atlet",
+  hapusAtlet: "Menghapus atlet",
+  hapusAnggota: "Menghapus anggota staf",
+  ubahProfilAtlet: "Mengubah profil atlet",
   berikanPersetujuan: "Memberikan persetujuan",
   cabutPersetujuan: "Mencabut persetujuan",
   setujuiSebagaiWali: "Persetujuan wali",
