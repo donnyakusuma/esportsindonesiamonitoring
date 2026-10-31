@@ -63,3 +63,35 @@ describe("Super admin dan Admin", () => {
     expect(m.admin).toBe(true);
   });
 });
+
+describe("Persetujuan diatur Super admin berdasarkan kontrak", () => {
+  it("atlet tidak bisa memberi maupun mencabut persetujuannya sendiri", () => {
+    const d = siapkanTim();
+    const rizky = d.tambahAtlet("rizky", { setuju: false });
+    ditolak(d.svc.berikanPersetujuan(rizky, { athleteId: "rizky", jenis: "kuesioner" }), /diatur oleh Super admin/);
+    data(d.svc.berikanPersetujuan(d.manajer, { athleteId: "rizky", jenis: "kuesioner" }));
+    ditolak(d.svc.cabutPersetujuan(rizky, { athleteId: "rizky", jenis: "kuesioner" }), /diatur oleh Super admin/);
+    expect(data(d.svc.persetujuanSaya(rizky)).persetujuan.find((p) => p.jenis === "kuesioner")!.berlaku).toBe(true);
+  });
+
+  it("staf biasa tidak bisa mengatur persetujuan; staf berstatus Admin bisa", () => {
+    const d = siapkanTim();
+    d.tambahAtlet("rizky", { setuju: false });
+    ditolak(d.svc.berikanPersetujuan(d.pelatih, { athleteId: "rizky", jenis: "kuesioner" }), /Super admin/);
+    data(d.svc.ubahProfilAnggota(d.manajer, { userId: "pelatih", admin: true }));
+    const rec = data(d.svc.berikanPersetujuan(d.pelatih, { athleteId: "rizky", jenis: "kuesioner" }));
+    expect(rec.grantedBy).toBe("pelatih");
+    expect(data(d.svc.logAudit(d.manajer)).at(-1)).toMatchObject({ action: "berikanPersetujuan", actorId: "pelatih", targetId: "rizky" });
+  });
+
+  it("Super admin mencatat persetujuan wali untuk atlet di bawah umur", () => {
+    const d = siapkanTim();
+    const dinda = d.tambahAtlet("dinda", { tanggalLahir: "2012-05-05", wali: "wali_dinda" });
+    const status = () => data(d.svc.persetujuanAtlet(d.manajer, { athleteId: "dinda" })).persetujuan.find((p) => p.jenis === "kuesioner")!;
+    expect(status().berlaku).toBe(false);
+    data(d.svc.catatPersetujuanWali(d.manajer, { athleteId: "dinda" }));
+    expect(status().berlaku).toBe(true);
+    expect(data(d.svc.persetujuanSaya(dinda)).wali?.disetujuiAt).toBeDefined();
+    ditolak(d.svc.persetujuanAtlet(d.pelatih, { athleteId: "dinda" }), /Super admin/);
+  });
+});

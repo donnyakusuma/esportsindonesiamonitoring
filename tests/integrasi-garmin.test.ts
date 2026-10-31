@@ -41,7 +41,7 @@ describe("Integrasi Garmin", () => {
     expect(data(d.svc.undangHubungkanGarmin(d.manajer, { athleteId: "rizky" })).status).toBe("diundang");
 
     ditolak(d.svc.hubungkanAkunGarmin(rizky, { garminUserId: "g-123" }), /persetujuan Data wearable/);
-    data(d.svc.berikanPersetujuan(rizky, { jenis: "wearable" }));
+    data(d.svc.berikanPersetujuan(d.manajer, { athleteId: rizky.athleteId!, jenis: "wearable" }));
     expect(data(d.svc.hubungkanAkunGarmin(rizky, { garminUserId: "g-123" }))).toMatchObject({ status: "terhubung", garminUserId: "g-123" });
 
     data(
@@ -61,7 +61,7 @@ describe("Integrasi Garmin", () => {
   it("atlet tidak bisa menghubungkan akun bila integrasi Tim belum aktif", () => {
     const d = siapkanTim();
     const rizky = d.tambahAtlet("rizky");
-    data(d.svc.berikanPersetujuan(rizky, { jenis: "wearable" }));
+    data(d.svc.berikanPersetujuan(d.manajer, { athleteId: rizky.athleteId!, jenis: "wearable" }));
     ditolak(d.svc.hubungkanAkunGarmin(rizky, { garminUserId: "g-1" }), /belum aktif/);
   });
 });

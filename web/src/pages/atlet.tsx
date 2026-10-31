@@ -1,6 +1,6 @@
 import { type ReactNode, useState } from "react";
-import type { CheckInItems, CheckInPayload, KomponenSkor, Laporan, PetaNyeri } from "../../../src/index.js";
-import { AREA_NYERI, BATAS_LAPORAN } from "../../../src/index.js";
+import type { CheckInItems, CheckInPayload, JenisSesi, KomponenSkor, Laporan, PetaNyeri, Sesi } from "../../../src/index.js";
+import { AREA_NYERI, BATAS_LAPORAN, RPE_LABELS } from "../../../src/index.js";
 import { tambahHari } from "../../../src/domain/tanggal.js";
 import { CatatanItem, Linimasa } from "../bersama.js";
 import { KartuGarmin } from "../garmin.js";
@@ -8,13 +8,18 @@ import { TrenChart } from "../TrenChart.js";
 import {
   AREA_NYERI_LABEL,
   CincinReadiness,
+  dariInputWaktu,
   fmtAngka,
   fmtJam,
   fmtTanggal,
   fmtWaktu,
   Info,
   Jendela,
+  JENIS_SESI_LABEL,
+  keInputWaktu,
+  fmtBeban,
   Kosong,
+  NilaiBeban,
   Pesan,
   Skala,
   StatusBadge,
@@ -46,6 +51,7 @@ export function HalamanAtlet({ halaman, pindah }: { halaman: HalamanAtlet; pinda
           <div className="card" style={{ maxWidth: 820 }}>
             <FormCheckIn />
           </div>
+          <BebanManual />
         </>
       );
     case "lapor":
@@ -108,10 +114,11 @@ function HariIni({ pindah }: { pindah(h: HalamanAtlet): void }) {
               <span className="v">{zTeks(skor.ok ? skor.data.komponen.tidur : undefined)}</span>
             </div>
             <div>
-              <span className="k">Beban</span>
+              <span className="k">
+                Beban{skor.ok && skor.data.komponen.beban?.sumber && ` · ${fmtBeban(skor.data.komponen.beban).sumber}`}
+              </span>
               <span className="v">
-                {fmtAngka(skor.ok ? (skor.data.komponen.beban?.nilai ?? null) : null)}
-                <small> AU</small>
+                <NilaiBeban k={skor.ok ? skor.data.komponen.beban : undefined} />
               </span>
             </div>
           </div>
@@ -149,46 +156,21 @@ function HariIni({ pindah }: { pindah(h: HalamanAtlet): void }) {
  * Kuesioner belum berlaku, karena tanpa itu Check-in ditolak.
  */
 function PersetujuanDiperlukan() {
-  const { svc, actor, nama } = useApp();
-  const { umpan, jalankan } = useAksi();
+  const { svc, actor } = useApp();
   const r = svc.persetujuanSaya(actor);
   if (!r.ok) return null;
   const kuesioner = r.data.persetujuan.find((p) => p.jenis === "kuesioner");
-  if (!kuesioner || kuesioner.berlaku) return umpan ? <Pesan umpan={umpan} /> : null;
-  const wali = r.data.wali;
-  const menungguWali = kuesioner.granted && wali && !wali.disetujuiAt;
+  if (!kuesioner || kuesioner.berlaku) return null;
+  const menungguWali = kuesioner.granted && r.data.wali && !r.data.wali.disetujuiAt;
 
   return (
     <div className="card stack persetujuan-perlu">
-      <h2>Persetujuan diperlukan</h2>
-      {menungguWali ? (
-        <>
-          <p className="ink-2">
-            Karena Anda berusia di bawah 18 tahun, data baru diproses setelah wali Anda ({nama(wali.userId)}) menyetujui.
-          </p>
-          <div>
-            <button
-              className="btn"
-              onClick={() => jalankan(svc.setujuiSebagaiWali({ athleteId: actor.athleteId!, guardianUserId: wali.userId }), "Persetujuan wali tercatat.")}
-            >
-              Simulasikan persetujuan wali (demo)
-            </button>
-          </div>
-        </>
-      ) : (
-        <>
-          <p className="ink-2">
-            Check-in pagi dan skor readiness diproses setelah Anda menyetujui pengumpulan data kuesioner harian. Persetujuan ini tercatat dan
-            bisa dicabut lewat staf.
-          </p>
-          <div>
-            <button className="btn utama" onClick={() => jalankan(svc.berikanPersetujuan(actor, { jenis: "kuesioner" }), "Persetujuan diberikan.")}>
-              Saya setuju
-            </button>
-          </div>
-        </>
-      )}
-      <Pesan umpan={umpan} />
+      <h2>Persetujuan data belum dicatat</h2>
+      <p className="ink-2">
+        {menungguWali
+          ? "Karena Anda berusia di bawah 18 tahun, data baru diproses setelah persetujuan wali dicatat oleh Super admin."
+          : "Check-in dan skor readiness baru diproses setelah Super admin mencatat persetujuan data sesuai kontrak Anda. Hubungi manajer tim."}
+      </p>
     </div>
   );
 }
@@ -421,6 +403,170 @@ function FormCheckIn() {
   );
 }
 
+// ───────────────────────── Beban manual (RPE) ─────────────────────────
+
+/**
+ * Mode manual Beban: atlet tanpa jam Garmin mencatat RPE tiap sesi. Atlet
+ * yang terhubung ke Garmin tidak melihat bagian ini, karena bebannya diambil
+ * dari menit intensitas Garmin.
+ */
+function BebanManual() {
+  const { svc, actor } = useApp();
+  const k = svc.koneksiGarminSaya(actor);
+  if (k.ok && k.data.koneksi?.status === "terhubung") return null;
+  return (
+    <>
+      <div className="judul" style={{ marginTop: 8 }}>
+        <div>
+          <h2>Beban latihan (mode manual)</h2>
+          <p>Anda belum terhubung ke Garmin, jadi beban latihan dihitung dari RPE setiap sesi: seberapa berat sesi itu terasa.</p>
+        </div>
+      </div>
+      <div className="grid-2" style={{ maxWidth: 1100 }}>
+      <div className="card">
+        <SesiMenungguRpe />
+      </div>
+      <div className="card">
+        <CatatSesiLain />
+      </div>
+      </div>
+    </>
+  );
+}
+
+function PilihRpe({ nilai, ubah }: { nilai: number | null; ubah(n: number): void }) {
+  return (
+    <div className="stack" style={{ gap: 4 }}>
+      <Skala label="RPE" nilai={nilai ?? -1} dari={0} sampai={10} ubah={ubah} lebar />
+      <span className="muted kecil">
+        {nilai === null ? "Seberapa berat sesi ini terasa? 0 = istirahat, 10 = maksimal." : `RPE ${nilai}: ${RPE_LABELS[nilai]}`}
+      </span>
+    </div>
+  );
+}
+
+function SesiMenungguRpe() {
+  const { svc, actor } = useApp();
+  // Umpan balik disimpan di sini, bukan di kartu sesi, karena kartu itu
+  // hilang dari daftar begitu RPE-nya tersimpan.
+  const aksi = useAksi();
+  const r = svc.sesiMenungguRpe(actor);
+  return (
+    <div className="stack">
+      <h2>Sesi menunggu RPE</h2>
+      {!r.ok ? (
+        <Pesan umpan={{ jenis: "gagal", teks: r.reason }} />
+      ) : r.data.length === 0 ? (
+        <Kosong>Semua sesi sudah diisi RPE-nya.</Kosong>
+      ) : (
+        r.data.map((s) => <IsiRpe key={s.id} sesi={s} jalankan={aksi.jalankan} />)
+      )}
+      <Pesan umpan={aksi.umpan} />
+    </div>
+  );
+}
+
+function IsiRpe({ sesi, jalankan }: { sesi: Sesi; jalankan: ReturnType<typeof useAksi>["jalankan"] }) {
+  const { svc, actor } = useApp();
+  const [rpe, setRpe] = useState<number | null>(null);
+  const [durasi, setDurasi] = useState(sesi.durasiMenit);
+  return (
+    <div className="catatan">
+      <div className="row spread">
+        <b>{JENIS_SESI_LABEL[sesi.jenis]}</b>
+        <span className="ink-2 kecil">
+          {fmtWaktu(sesi.mulaiAt)}
+          {sesi.rpeRencana !== undefined && ` · rencana RPE ${sesi.rpeRencana}`}
+        </span>
+      </div>
+      <label className="row kecil">
+        Durasi aktual
+        <input type="number" min={1} style={{ width: 80 }} value={durasi} onChange={(e) => setDurasi(Number(e.target.value))} />
+        menit
+      </label>
+      <PilihRpe nilai={rpe} ubah={setRpe} />
+      <div>
+        <button
+          className="btn utama kecil"
+          disabled={rpe === null}
+          onClick={() => rpe !== null && jalankan(
+                svc.catatSesi(actor, { sesiId: sesi.id, rpeAktual: rpe, durasiMenit: durasi }),
+                `RPE ${JENIS_SESI_LABEL[sesi.jenis].toLowerCase()} ${fmtWaktu(sesi.mulaiAt)} tersimpan.`
+              )}
+        >
+          Simpan RPE
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CatatSesiLain() {
+  const { svc, actor } = useApp();
+  const { umpan, jalankan } = useAksi();
+  const [buka, setBuka] = useState(false);
+  const [jenis, setJenis] = useState<JenisSesi>("ranked");
+  const [mulai, setMulai] = useState(() => keInputWaktu(new Date(Date.now() - 2 * 3600_000).toISOString()));
+  const [durasi, setDurasi] = useState(90);
+  const [rpe, setRpe] = useState<number | null>(null);
+
+  return (
+    <div className="stack">
+      <div className="card-head" style={{ marginBottom: 0 }}>
+        <h2>Catat sesi lain</h2>
+        <button className="link kecil" onClick={() => setBuka((v) => !v)}>
+          {buka ? "Tutup" : "Tambah sesi"}
+        </button>
+      </div>
+      {!buka ? (
+        <p className="muted kecil">Untuk latihan yang tidak dijadwalkan staf, misalnya ranked malam.</p>
+      ) : (
+        <>
+          <div className="fields">
+            <label className="field">
+              Jenis
+              <select value={jenis} onChange={(e) => setJenis(e.target.value as JenisSesi)}>
+                {Object.entries(JENIS_SESI_LABEL).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              Mulai (WIB)
+              <input type="datetime-local" value={mulai} onChange={(e) => setMulai(e.target.value)} />
+            </label>
+            <label className="field">
+              Durasi (menit)
+              <input type="number" min={1} value={durasi} onChange={(e) => setDurasi(Number(e.target.value))} />
+            </label>
+          </div>
+          <PilihRpe nilai={rpe} ubah={setRpe} />
+          <div>
+            <button
+              className="btn utama"
+              disabled={rpe === null}
+              onClick={() => {
+                if (rpe === null) return;
+                const mulaiAt = dariInputWaktu(mulai);
+                const selesaiAt = new Date(new Date(mulaiAt).getTime() + durasi * 60_000).toISOString();
+                if (jalankan(svc.catatSesi(actor, { jenis, durasiMenit: durasi, mulaiAt, selesaiAt, rpeAktual: rpe }), "Sesi tercatat.")) {
+                  setRpe(null);
+                  setBuka(false);
+                }
+              }}
+            >
+              Simpan sesi
+            </button>
+          </div>
+        </>
+      )}
+      <Pesan umpan={umpan} />
+    </div>
+  );
+}
+
 // ───────────────────────── Tren ─────────────────────────
 
 function TrenSaya() {
@@ -482,12 +628,14 @@ function CatatanSaya() {
  */
 function KoneksiGarminSaya() {
   const { svc, actor } = useApp();
-  const { umpan, jalankan, setUmpan } = useAksi();
+  const { umpan, jalankan } = useAksi();
   const [otorisasi, setOtorisasi] = useState(false);
   const r = svc.koneksiGarminSaya(actor);
   if (!r.ok) return null;
   const { integrasiAktif, koneksi } = r.data;
   if (koneksi?.status === "terhubung") return umpan ? <Pesan umpan={umpan} /> : null;
+  const p = svc.persetujuanSaya(actor);
+  const wearableBerlaku = p.ok && !!p.data.persetujuan.find((x) => x.jenis === "wearable")?.berlaku;
 
   return (
     <div className="hubungkan-garmin">
@@ -496,12 +644,14 @@ function KoneksiGarminSaya() {
         <span className="muted kecil">
           {!integrasiAktif
             ? "Tim belum mengaktifkan integrasi Garmin."
-            : koneksi?.status === "diundang"
+            : !wearableBerlaku
+              ? "Persetujuan data wearable belum dicatat oleh Super admin. Sementara itu, beban latihan dicatat manual lewat RPE di tab Check-in."
+              : koneksi?.status === "diundang"
               ? "Staf mengundang Anda menghubungkan akun Garmin agar langkah, tidur, detak jantung, dan stres terisi otomatis."
               : "Langkah, tidur, detak jantung, stres, dan data lain akan terisi otomatis setiap pagi."}
         </span>
       </div>
-      {integrasiAktif && (
+      {integrasiAktif && wearableBerlaku && (
         <button className="btn utama" onClick={() => setOtorisasi(true)}>
           Hubungkan akun Garmin
         </button>
@@ -512,8 +662,8 @@ function KoneksiGarminSaya() {
           <div className="stack">
             <h2>Izinkan akses Garmin Connect</h2>
             <p className="ink-2">
-              Dengan menghubungkan, Anda menyetujui data wearable dari Garmin (langkah, tidur, kalori, detak jantung, stres, Pulse Ox, Body
-              Battery, komposisi tubuh, respirasi, dan tekanan darah) diproses untuk memantau kondisi Anda.
+              Data Garmin (langkah, tidur, kalori, detak jantung, stres, Pulse Ox, Body Battery, komposisi tubuh, respirasi, dan tekanan darah)
+              akan masuk otomatis sesuai persetujuan dalam kontrak Anda.
             </p>
             <p className="muted kecil">
               Di aplikasi sungguhan, Anda akan diarahkan ke halaman masuk Garmin Connect. Di prototipe ini langkah itu disimulasikan.
@@ -524,12 +674,10 @@ function KoneksiGarminSaya() {
                 style={{ flex: "1 1 140px" }}
                 onClick={() => {
                   setOtorisasi(false);
-                  const setuju = svc.berikanPersetujuan(actor, { jenis: "wearable" });
-                  if (!setuju.ok) return setUmpan({ jenis: "gagal", teks: setuju.reason });
                   jalankan(svc.hubungkanAkunGarmin(actor, { garminUserId: `garmin-${actor.athleteId}` }), "Akun Garmin terhubung.");
                 }}
               >
-                Setuju dan hubungkan (simulasi)
+                Hubungkan (simulasi)
               </button>
               <button className="btn" style={{ flex: "1 1 140px" }} onClick={() => setOtorisasi(false)}>
                 Batal

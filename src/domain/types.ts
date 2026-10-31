@@ -68,7 +68,8 @@ export interface ConsentRecord {
   athleteId: string;
   jenis: JenisPersetujuan;
   granted: boolean;
-  grantedBy: string; // userId: atlet sendiri, atau wali bila di bawah umur
+  /** userId Super admin/Admin yang mencatat persetujuan berdasarkan kontrak atlet. */
+  grantedBy: string;
   at: string; // ISO datetime
 }
 
@@ -152,6 +153,11 @@ export interface KomponenSkor {
   z: number | null;
   bobot: number;
   tersedia: boolean;
+  /**
+   * Khusus Beban: "garmin" = total menit intensitas Garmin 3 hari,
+   * "manual" = jumlah RPE x menit Sesi 3 hari (AU).
+   */
+  sumber?: "garmin" | "manual";
 }
 
 export interface ScoreConfig {

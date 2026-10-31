@@ -26,7 +26,7 @@ describe("Data wearable (Garmin)", () => {
     const d = siapkanTim();
     const rizky = d.tambahAtlet("rizky");
     ditolak(d.svc.terimaDataWearable(contoh("rizky", d.hariIni())), /persetujuan/);
-    data(d.svc.berikanPersetujuan(rizky, { jenis: "wearable" }));
+    data(d.svc.berikanPersetujuan(d.manajer, { athleteId: rizky.athleteId!, jenis: "wearable" }));
     const r = data(d.svc.terimaDataWearable(contoh("rizky", d.hariIni())));
     expect(r).toMatchObject({ sumber: "garmin", langkah: 6200, spo2: 97 });
   });
@@ -34,7 +34,7 @@ describe("Data wearable (Garmin)", () => {
   it("menolak nilai di luar rentang wajar", () => {
     const d = siapkanTim();
     const rizky = d.tambahAtlet("rizky");
-    data(d.svc.berikanPersetujuan(rizky, { jenis: "wearable" }));
+    data(d.svc.berikanPersetujuan(d.manajer, { athleteId: rizky.athleteId!, jenis: "wearable" }));
     ditolak(d.svc.terimaDataWearable(contoh("rizky", d.hariIni(), { spo2: 140 })), /Pulse Ox/);
     ditolak(d.svc.terimaDataWearable(contoh("rizky", d.hariIni(), { detakJantung: { istirahat: 10, rataRata: 70, maks: 150 } })), /Detak jantung/);
     ditolak(d.svc.terimaDataWearable(contoh("rizky", d.hariIni(), { stres: -1 })), /stres/);
@@ -43,7 +43,7 @@ describe("Data wearable (Garmin)", () => {
   it("kiriman ulang untuk tanggal yang sama menimpa data sebelumnya", () => {
     const d = siapkanTim();
     const rizky = d.tambahAtlet("rizky");
-    data(d.svc.berikanPersetujuan(rizky, { jenis: "wearable" }));
+    data(d.svc.berikanPersetujuan(d.manajer, { athleteId: rizky.athleteId!, jenis: "wearable" }));
     data(d.svc.terimaDataWearable(contoh("rizky", d.hariIni())));
     data(d.svc.terimaDataWearable(contoh("rizky", d.hariIni(), { langkah: 9000 })));
     const r = data(d.svc.dataWearableAtlet(d.pelatih, { athleteId: "rizky", dari: d.hariIni(), sampai: d.hariIni() }));
@@ -55,7 +55,7 @@ describe("Data wearable (Garmin)", () => {
     const d = siapkanTim();
     const rizky = d.tambahAtlet("rizky");
     const budi = d.tambahAtlet("budi");
-    data(d.svc.berikanPersetujuan(rizky, { jenis: "wearable" }));
+    data(d.svc.berikanPersetujuan(d.manajer, { athleteId: rizky.athleteId!, jenis: "wearable" }));
     data(d.svc.terimaDataWearable(contoh("rizky", d.hariIni())));
     const rentang = { athleteId: "rizky", dari: d.hariIni(), sampai: d.hariIni() };
     expect(data(d.svc.dataWearableAtlet(d.fisio, rentang)).data).toHaveLength(1);
@@ -68,7 +68,7 @@ describe("Data wearable (Garmin)", () => {
     const d = siapkanTim();
     const rizky = d.tambahAtlet("rizky");
     d.tambahAtlet("andi");
-    data(d.svc.berikanPersetujuan(rizky, { jenis: "wearable" }));
+    data(d.svc.berikanPersetujuan(d.manajer, { athleteId: rizky.athleteId!, jenis: "wearable" }));
     data(d.svc.terimaDataWearable(contoh("rizky", d.hariIni())));
     const baris = data(d.svc.wearableTim(d.pelatih, { tanggal: d.hariIni() }));
     expect(baris.find((b) => b.athleteId === "rizky")).toMatchObject({ persetujuanBerlaku: true, data: { langkah: 6200 } });
@@ -79,7 +79,7 @@ describe("Data wearable (Garmin)", () => {
   it("menghapus atlet ikut menghapus data wearable-nya", () => {
     const d = siapkanTim();
     const rizky = d.tambahAtlet("rizky");
-    data(d.svc.berikanPersetujuan(rizky, { jenis: "wearable" }));
+    data(d.svc.berikanPersetujuan(d.manajer, { athleteId: rizky.athleteId!, jenis: "wearable" }));
     data(d.svc.terimaDataWearable(contoh("rizky", d.hariIni())));
     data(d.svc.hapusAtlet(d.manajer, { athleteId: "rizky" }));
     d.tambahAtlet("rizky");

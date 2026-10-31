@@ -56,6 +56,7 @@ import {
   type ComponentInput,
   DEFAULT_SCORE_CONFIG,
   hitungBaseline,
+  MIN_STD_BEBAN_GARMIN,
   hitungIndeksTidur,
   hitungReadiness,
   hitungWellnessScore,
@@ -390,23 +391,31 @@ export class MonitoringService {
 
   // ───────────────────────── Persetujuan ─────────────────────────
 
-  berikanPersetujuan(actor: Actor, payload: { jenis: JenisPersetujuan }): CommandResult<ConsentRecord> {
-    return this.simpanPersetujuan(actor, payload.jenis, true);
+  /**
+   * Persetujuan data dicatat oleh Super admin atau Admin berdasarkan kontrak
+   * yang ditandatangani atlet (dan wali bila di bawah umur) sebelum memakai
+   * aplikasi. Atlet tidak bisa memberi atau mencabut persetujuan sendiri.
+   */
+  berikanPersetujuan(actor: Actor, payload: { athleteId: string; jenis: JenisPersetujuan }): CommandResult<ConsentRecord> {
+    return this.simpanPersetujuan(actor, payload.athleteId, payload.jenis, true);
   }
 
-  cabutPersetujuan(actor: Actor, payload: { jenis: JenisPersetujuan }): CommandResult<ConsentRecord> {
-    return this.simpanPersetujuan(actor, payload.jenis, false);
+  cabutPersetujuan(actor: Actor, payload: { athleteId: string; jenis: JenisPersetujuan }): CommandResult<ConsentRecord> {
+    return this.simpanPersetujuan(actor, payload.athleteId, payload.jenis, false);
   }
 
   private simpanPersetujuan(
     actor: Actor,
+    athleteId: string,
     jenis: JenisPersetujuan,
     granted: boolean
   ): CommandResult<ConsentRecord> {
-    const cek = cekPeran(actor, ["atlet"]);
-    if (!cek.diizinkan) return fail(cek.alasan!);
+    if (actor.peran === "atlet") return fail("Persetujuan data diatur oleh Super admin berdasarkan kontrak atlet.");
+    const kontrol = this.cekKontrol(actor);
+    if (!kontrol.ok) return kontrol;
     if (!jenisPersetujuanValid(jenis)) return fail("Jenis persetujuan tidak dikenal.");
-    const athleteId = actor.athleteId!;
+    const athlete = this.storage.getAthlete(athleteId);
+    if (!athlete || athlete.teamId !== actor.teamId) return fail("Atlet tidak ditemukan.");
     const rec: ConsentRecord = {
       athleteId,
       jenis,
@@ -415,18 +424,42 @@ export class MonitoringService {
       at: this.clock.nowISO(),
     };
     this.storage.saveConsent(rec);
-    this.audit(
-      actor,
-      granted ? "berikanPersetujuan" : "cabutPersetujuan",
-      "athlete",
-      athleteId,
-      jenis
-    );
+    this.audit(actor, granted ? "berikanPersetujuan" : "cabutPersetujuan", "athlete", athleteId, jenis);
+    return ok(rec);
+  }
+
+  /** Status tiap jenis Persetujuan seorang Atlet, untuk form profil di sisi Super admin/Admin. */
+  persetujuanAtlet(actor: Actor, payload: { athleteId: string }): ReturnType<MonitoringService["statusPersetujuan"]> {
+    const kontrol = this.cekKontrol(actor);
+    if (!kontrol.ok) return kontrol;
+    const athlete = this.storage.getAthlete(payload.athleteId);
+    if (!athlete || athlete.teamId !== actor.teamId) return fail("Atlet tidak ditemukan.");
+    return this.statusPersetujuan(athlete);
+  }
+
+  /** Super admin/Admin mencatat bahwa wali sudah menandatangani kontrak atlet di bawah umur. */
+  catatPersetujuanWali(actor: Actor, payload: { athleteId: string }): CommandResult<GuardianApproval> {
+    const kontrol = this.cekKontrol(actor);
+    if (!kontrol.ok) return kontrol;
+    const athlete = this.storage.getAthlete(payload.athleteId);
+    if (!athlete || athlete.teamId !== actor.teamId) return fail("Atlet tidak ditemukan.");
+    if (!athlete.guardianUserId) return fail("Atlet ini belum punya wali terdaftar.");
+    const rec: GuardianApproval = { athleteId: athlete.id, guardianUserId: athlete.guardianUserId, at: this.clock.nowISO() };
+    this.storage.saveGuardianApproval(rec);
+    this.audit(actor, "catatPersetujuanWali", "athlete", athlete.id, athlete.guardianUserId);
     return ok(rec);
   }
 
   /** Status tiap jenis Persetujuan milik Atlet sendiri, termasuk apakah sedang berlaku. */
-  persetujuanSaya(actor: Actor): CommandResult<{
+  persetujuanSaya(actor: Actor): ReturnType<MonitoringService["statusPersetujuan"]> {
+    const cek = cekPeran(actor, ["atlet"]);
+    if (!cek.diizinkan) return fail(cek.alasan!);
+    const athlete = this.storage.getAthlete(actor.athleteId ?? "");
+    if (!athlete) return fail("Atlet tidak ditemukan.");
+    return this.statusPersetujuan(athlete);
+  }
+
+  private statusPersetujuan(athlete: Athlete): CommandResult<{
     persetujuan: {
       jenis: JenisPersetujuan;
       granted: boolean;
@@ -436,10 +469,6 @@ export class MonitoringService {
     }[];
     wali: { userId: string; disetujuiAt?: string } | null;
   }> {
-    const cek = cekPeran(actor, ["atlet"]);
-    if (!cek.diizinkan) return fail(cek.alasan!);
-    const athlete = this.storage.getAthlete(actor.athleteId ?? "");
-    if (!athlete) return fail("Atlet tidak ditemukan.");
     const team = this.storage.getTeam(athlete.teamId);
     if (!team) return fail("Tim tidak ditemukan.");
     const tanggal = tanggalDiZona(this.clock.nowISO(), team.timezone);
@@ -462,13 +491,10 @@ export class MonitoringService {
           alasan: keputusan.alasan,
         };
       }),
-      wali: athlete.guardianUserId
-        ? { userId: athlete.guardianUserId, disetujuiAt: approval?.at }
-        : null,
+      wali: athlete.guardianUserId ? { userId: athlete.guardianUserId, disetujuiAt: approval?.at } : null,
     });
   }
 
-  /** Wali bukan anggota Tim, jadi dipanggil dengan userId wali, bukan Aktor. */
   setujuiSebagaiWali(payload: { athleteId: string; guardianUserId: string }): CommandResult<GuardianApproval> {
     const athlete = this.storage.getAthlete(payload.athleteId);
     if (!athlete) return fail("Atlet tidak ditemukan.");
@@ -635,6 +661,12 @@ export class MonitoringService {
     this.storage.saveDataWearable(data);
     const koneksi = this.storage.getKoneksiGarmin(athlete.id);
     if (koneksi?.status === "terhubung") this.storage.saveKoneksiGarmin({ ...koneksi, sinkronTerakhirAt: data.diterimaAt });
+    // Beban mode Garmin memakai jendela 3 hari, jadi skor yang sudah ada untuk
+    // hari ini dan 2 hari berikutnya dihitung ulang.
+    for (let i = 0; i <= 2; i++) {
+      const t = tambahHari(data.tanggal, i);
+      if (this.storage.getDailyScore(athlete.id, t)) this.hitungDanSimpanSkorHarian(athlete.id, t);
+    }
     return ok(data);
   }
 
@@ -1019,7 +1051,6 @@ export class MonitoringService {
     const baselineTidur = hitungBaseline(
       this.riwayatCheckIn(athleteId, tanggal, (c) => hitungIndeksTidur(c.items))
     );
-    const baselineBeban = hitungBaseline(this.riwayatBeban(athleteId, tanggal));
 
     const wellnessHariIni = checkIn ? hitungWellnessScore(checkIn.items) : null;
     const inputs: ComponentInput[] = [
@@ -1034,12 +1065,7 @@ export class MonitoringService {
       { key: "reaksi", nilaiHariIni: null, baseline: BASELINE_KOSONG, lebihTinggiLebihBaik: false },
       // Tahap 3: ln(HRV) dan RHR dari Data Wearable.
       { key: "fisiologis", nilaiHariIni: null, baseline: BASELINE_KOSONG, lebihTinggiLebihBaik: true },
-      {
-        key: "beban",
-        nilaiHariIni: this.beban3Hari(athleteId, tanggal),
-        baseline: baselineBeban,
-        lebihTinggiLebihBaik: false,
-      },
+      this.inputBeban(athleteId, tanggal),
     ];
 
     const { readiness, komponen, jumlahTersedia } = hitungReadiness(inputs, config);
@@ -1079,6 +1105,52 @@ export class MonitoringService {
         tambahHari(tanggal, -1)
       )
       .map(extract);
+  }
+
+  /**
+   * Beban dua mode (rumus v1.1). Mode Garmin dipakai bila hari ini ada data
+   * Garmin dan baseline Garmin sudah siap (minimal 7 hari); selain itu
+   * mode manual dari RPE x menit. Mode berbeda tidak dicampur dalam satu baseline.
+   */
+  private inputBeban(athleteId: string, tanggal: string): ComponentInput {
+    const garminHariIni = this.bebanGarmin3Hari(athleteId, tanggal);
+    if (garminHariIni !== null) {
+      const baseline = hitungBaseline(this.riwayatBebanGarmin(athleteId, tanggal));
+      if (baseline.ready) {
+        return {
+          key: "beban",
+          nilaiHariIni: garminHariIni,
+          baseline,
+          lebihTinggiLebihBaik: false,
+          minStd: MIN_STD_BEBAN_GARMIN,
+          sumber: "garmin",
+        };
+      }
+    }
+    return {
+      key: "beban",
+      nilaiHariIni: this.beban3Hari(athleteId, tanggal),
+      baseline: hitungBaseline(this.riwayatBeban(athleteId, tanggal)),
+      lebihTinggiLebihBaik: false,
+      sumber: "manual",
+    };
+  }
+
+  /** Total menit intensitas Garmin hari ini dan 2 hari sebelumnya; null bila hari ini tidak ada data Garmin. */
+  private bebanGarmin3Hari(athleteId: string, tanggal: string): number | null {
+    const data = this.storage.listDataWearableByAthlete(athleteId, tambahHari(tanggal, -2), tanggal);
+    const hariIni = data.find((d) => d.tanggal === tanggal);
+    if (!hariIni || hariIni.menitIntensitas === null) return null;
+    return data.reduce((sum, d) => sum + (d.menitIntensitas ?? 0), 0);
+  }
+
+  private riwayatBebanGarmin(athleteId: string, tanggal: string): number[] {
+    const hasil: number[] = [];
+    for (let i = JUMLAH_HARI_BASELINE; i >= 1; i--) {
+      const v = this.bebanGarmin3Hari(athleteId, tambahHari(tanggal, -i));
+      if (v !== null) hasil.push(v);
+    }
+    return hasil;
   }
 
   /** Jumlah beban sRPE (RPE x menit) dari Sesi yang sudah diisi RPE, hari ini dan 2 hari sebelumnya. */

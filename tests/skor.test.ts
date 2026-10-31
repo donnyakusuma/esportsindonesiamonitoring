@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { data, ditolak, isiBaselineBergantian, payloadCheckIn, siapkanTim } from "./helpers.js";
+import { SKOR_FORMULA_VERSION } from "../src/modules/skor.js";
 
 describe("Skor", () => {
   it("Wellness Score adalah rata-rata enam butir 1-5 yang diskalakan ke 0-100", () => {
@@ -124,8 +125,8 @@ describe("Skor", () => {
     expect(tersimpanKemarin.readiness).toBe(skorKemarin.readiness);
     expect(tersimpanKemarin.configUsed.bobot.wellness).toBe(0.35);
     expect(skorHariIni.configUsed.bobot.wellness).toBe(0.5);
-    expect(tersimpanKemarin.formulaVersion).toBe("v1");
-    expect(skorHariIni.formulaVersion).toBe("v1");
+    expect(tersimpanKemarin.formulaVersion).toBe(SKOR_FORMULA_VERSION);
+    expect(skorHariIni.formulaVersion).toBe(SKOR_FORMULA_VERSION);
   });
 
   it("perubahan bobot dan ambang di luar batas ditolak, dan perubahan yang sah tercatat di Log Audit", () => {

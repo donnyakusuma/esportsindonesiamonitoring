@@ -78,7 +78,7 @@ export function siapkanTim(): Dunia {
         })
       );
       const atlet: Actor = { userId: id, teamId: team.id, peran: "atlet", athleteId: id };
-      if (opsi.setuju !== false) data(svc.berikanPersetujuan(atlet, { jenis: "kuesioner" }));
+      if (opsi.setuju !== false) data(svc.berikanPersetujuan(manajer, { athleteId: atlet.athleteId!, jenis: "kuesioner" }));
       return atlet;
     },
     hariIni: () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(new Date(clock.nowISO())),

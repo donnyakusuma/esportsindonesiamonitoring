@@ -43,6 +43,23 @@ export function DaftarAtlet({ bukaReadiness }: { bukaReadiness?(athleteId: strin
 
   const sedangEdit = panel?.mode === "edit" ? semua.find((a) => a.id === panel.id) : undefined;
 
+  /** Mencatat perubahan persetujuan kontrak; hanya jenis yang berubah yang dikirim. */
+  function terapkanPersetujuan(athleteId: string, p: IsianProfil["persetujuan"]): string | null {
+    const st = svc.persetujuanAtlet(actor, { athleteId });
+    if (!st.ok) return st.reason;
+    for (const jenis of ["kuesioner", "wearable"] as const) {
+      const sekarang = !!st.data.persetujuan.find((x) => x.jenis === jenis)?.granted;
+      if (p[jenis] === sekarang) continue;
+      const h = p[jenis] ? svc.berikanPersetujuan(actor, { athleteId, jenis }) : svc.cabutPersetujuan(actor, { athleteId, jenis });
+      if (!h.ok) return h.reason;
+    }
+    if (p.wali && st.data.wali && !st.data.wali.disetujuiAt) {
+      const h = svc.catatPersetujuanWali(actor, { athleteId });
+      if (!h.ok) return h.reason;
+    }
+    return null;
+  }
+
   return (
     <>
       <div className="judul">
@@ -120,6 +137,14 @@ export function DaftarAtlet({ bukaReadiness }: { bukaReadiness?(athleteId: strin
               </dd>
               <dt>Number of event</dt>
               <dd>{a.kelompok ?? "–"}</dd>
+              {bisaUbah && (
+                <>
+                  <dt>Persetujuan</dt>
+                  <dd>
+                    <RingkasPersetujuan athleteId={a.id} />
+                  </dd>
+                </>
+              )}
             </dl>
             <div className="kartu-aksi">
               {bisaUbah && !a.archived && (
@@ -182,11 +207,13 @@ export function DaftarAtlet({ bukaReadiness }: { bukaReadiness?(athleteId: strin
             simpan={(isi) => {
               const galat = akun.validasi(null, isi.username, isi.password);
               if (galat) return galat;
-              const { username, password, ...profil } = isi;
+              const { username, password, persetujuan, ...profil } = isi;
               const h = svc.daftarkanAtlet(actor, profil);
               if (!h.ok) return h.reason;
               akun.simpan(h.data.id, username, password);
-              aksi.jalankan(h, `${isi.nama.trim()} terdaftar. Atlet bisa masuk dengan nama pengguna ${username.trim()} dan perlu memberikan persetujuan data sebelum Check-in.`);
+              const g = terapkanPersetujuan(h.data.id, persetujuan);
+              if (g) return g;
+              aksi.jalankan(h, `${isi.nama.trim()} terdaftar. Atlet bisa masuk dengan nama pengguna ${username.trim()}.`);
               setFilter("aktif");
               setCari("");
               setPanel(null);
@@ -204,10 +231,12 @@ export function DaftarAtlet({ bukaReadiness }: { bukaReadiness?(athleteId: strin
             simpan={(isi) => {
               const galat = akun.validasi(sedangEdit.id, isi.username, isi.password);
               if (galat) return galat;
-              const { username, password, ...profil } = isi;
+              const { username, password, persetujuan, ...profil } = isi;
               const h = svc.ubahProfilAtlet(actor, { athleteId: sedangEdit.id, ...profil });
               if (!h.ok) return h.reason;
               akun.simpan(sedangEdit.id, username, password);
+              const g = terapkanPersetujuan(sedangEdit.id, persetujuan);
+              if (g) return g;
               aksi.jalankan(h, `Profil ${isi.nama.trim()} tersimpan.`);
               setPanel(null);
               return null;
@@ -245,6 +274,23 @@ interface IsianProfil {
   username: string;
   /** Kosong saat mengedit berarti kata sandi tidak diubah. */
   password: string;
+  /** Persetujuan data berdasarkan kontrak; dicatat oleh Super admin/Admin. */
+  persetujuan: { kuesioner: boolean; wearable: boolean; wali: boolean };
+}
+
+function RingkasPersetujuan({ athleteId }: { athleteId: string }) {
+  const { svc, actor } = useApp();
+  const r = svc.persetujuanAtlet(actor, { athleteId });
+  if (!r.ok) return <>–</>;
+  const ada = (j: string) => r.data.persetujuan.find((p) => p.jenis === j);
+  const label = [ada("kuesioner")?.granted && "Kuesioner", ada("wearable")?.granted && "Wearable"].filter(Boolean).join(" · ");
+  const menungguWali = r.data.wali && !r.data.wali.disetujuiAt;
+  return (
+    <>
+      {label || "Belum dicatat"}
+      {menungguWali && <span className="muted"> · menunggu wali</span>}
+    </>
+  );
 }
 
 const KELOMPOK_BARU = "__baru__";
@@ -262,6 +308,13 @@ function FormProfil(props: { judul: string; awal?: Athlete; batal(): void; simpa
   const [kelBaru, setKelBaru] = useState("");
   const kelompok = pilihKel === KELOMPOK_BARU ? kelBaru.trim() : pilihKel;
   const [wali, setWali] = useState(a?.guardianUserId ?? "");
+  const { svc, actor } = useApp();
+  const status = a ? svc.persetujuanAtlet(actor, { athleteId: a.id }) : null;
+  const granted = (j: string) => (status?.ok ? !!status.data.persetujuan.find((p) => p.jenis === j)?.granted : true);
+  const waliTercatat = !!(status?.ok && status.data.wali?.disetujuiAt);
+  const [setujuKuesioner, setSetujuKuesioner] = useState(granted("kuesioner"));
+  const [setujuWearable, setSetujuWearable] = useState(granted("wearable"));
+  const [waliTtd, setWaliTtd] = useState(waliTercatat);
   const [username, setUsername] = useState(a ? akun.username(a.id) : "");
   const [sandi, setSandi] = useState("");
   const [lihatSandi, setLihatSandi] = useState(false);
@@ -298,6 +351,7 @@ function FormProfil(props: { judul: string; awal?: Athlete; batal(): void; simpa
           guardianUserId: wali.trim() || undefined,
           username,
           password: sandi,
+          persetujuan: { kuesioner: setujuKuesioner, wearable: setujuWearable, wali: waliTtd },
         });
         if (g) setGalatSimpan(g);
       }}
@@ -361,6 +415,44 @@ function FormProfil(props: { judul: string; awal?: Athlete; batal(): void; simpa
           <input id="profil-wali" type="text" value={wali} onChange={(e) => setWali(e.target.value.trim())} placeholder="mis. wali_andi" />
         </label>
       )}
+      <fieldset className="akun-masuk">
+        <legend>Persetujuan data (kontrak)</legend>
+        <p className="hint">
+          Dicatat oleh Super admin/Admin sesuai kontrak yang sudah ditandatangani atlet. Atlet tidak bisa mengubahnya sendiri, dan setiap
+          perubahan tercatat di Log Audit.
+        </p>
+        <label className="centang-admin">
+          <input id="setuju-kuesioner" type="checkbox" checked={setujuKuesioner} onChange={(e) => setSetujuKuesioner(e.target.checked)} />
+          <span>
+            <b>Kuesioner harian</b>
+            <span className="hint">Check-in pagi, RPE sesi, dan skor readiness.</span>
+          </span>
+        </label>
+        <label className="centang-admin">
+          <input id="setuju-wearable" type="checkbox" checked={setujuWearable} onChange={(e) => setSetujuWearable(e.target.checked)} />
+          <span>
+            <b>Data wearable (Garmin)</b>
+            <span className="hint">Kondisi Atlet dari jam Garmin; atlet tetap menghubungkan akun Garmin-nya sendiri.</span>
+          </span>
+        </label>
+        {(anak || waliTercatat) && (
+          <label className="centang-admin">
+            <input
+              id="setuju-wali"
+              type="checkbox"
+              checked={waliTtd}
+              disabled={waliTercatat || !wali.trim()}
+              onChange={(e) => setWaliTtd(e.target.checked)}
+            />
+            <span>
+              <b>Wali sudah menandatangani kontrak</b>
+              <span className="hint">
+                {waliTercatat ? "Sudah tercatat." : !wali.trim() ? "Isi ID wali terlebih dahulu." : "Wajib untuk atlet di bawah 18 tahun."}
+              </span>
+            </span>
+          </label>
+        )}
+      </fieldset>
       <fieldset className="akun-masuk">
         <legend>Akun masuk (halaman landing)</legend>
         <p className="hint">Atlet memakai nama pengguna dan kata sandi ini untuk masuk di halaman awal.</p>

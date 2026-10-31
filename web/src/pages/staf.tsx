@@ -21,7 +21,9 @@ import {
   JENIS_SESI_LABEL,
   keInputWaktu,
   KOMPONEN_LABEL,
+  fmtBeban,
   Kosong,
+  NilaiBeban,
   Pesan,
   SkorBar,
   StatusBadge,
@@ -191,10 +193,9 @@ function PapanTim({ buka }: { buka(athleteId: string): void }) {
                   <span className="v">{zTeks(terpilih.komponen.tidur)}</span>
                 </div>
                 <div>
-                  <span className="k">Beban</span>
+                  <span className="k">Beban{fmtBeban(terpilih.komponen.beban).sumber && ` · ${fmtBeban(terpilih.komponen.beban).sumber}`}</span>
                   <span className="v">
-                    {fmtAngka(terpilih.komponen.beban?.nilai ?? null)}
-                    <small> AU</small>
+                    <NilaiBeban k={terpilih.komponen.beban} />
                   </span>
                 </div>
               </div>
@@ -233,7 +234,9 @@ function PapanTim({ buka }: { buka(athleteId: string): void }) {
                   <th className="num" title="Skor z terhadap baseline pribadi; positif = lebih baik dari biasanya">
                     z Tidur
                   </th>
-                  <th className="num">Beban (AU)</th>
+                  <th className="num" title="Menit intensitas Garmin 3 hari, atau RPE × menit (AU) bila tanpa Garmin">
+                    Beban
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -265,7 +268,9 @@ function PapanTim({ buka }: { buka(athleteId: string): void }) {
                     </td>
                     <td className="num">{fmtAngka(b.wellnessScore)}</td>
                     <td className="num">{zTeks(b.komponen.tidur)}</td>
-                    <td className="num">{fmtAngka(b.komponen.beban?.nilai ?? null)}</td>
+                    <td className="num">
+                      <NilaiBeban k={b.komponen.beban} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -429,10 +434,11 @@ function DetailAtlet({ athleteId, kembali }: { athleteId: string; kembali(): voi
               <span className="v">{fmtAngka(skor.ok ? skor.data.wellnessScore : null)}</span>
             </div>
             <div>
-              <span className="k">Beban</span>
+              <span className="k">
+                Beban{skor.ok && skor.data.komponen.beban?.sumber && ` · ${fmtBeban(skor.data.komponen.beban).sumber}`}
+              </span>
               <span className="v">
-                {fmtAngka(skor.ok ? (skor.data.komponen.beban?.nilai ?? null) : null)}
-                <small> AU</small>
+                <NilaiBeban k={skor.ok ? skor.data.komponen.beban : undefined} />
               </span>
             </div>
           </div>
@@ -470,9 +476,10 @@ function DetailAtlet({ athleteId, kembali }: { athleteId: string; kembali(): voi
                     <tr key={k}>
                       <td>
                         {KOMPONEN_LABEL[k] ?? k}
+                        {k === "beban" && v.sumber && <span className="muted kecil"> · {fmtBeban(v).sumber}</span>}
                         {!v.tersedia && <div className="muted kecil">tidak tersedia</div>}
                       </td>
-                      <td className="num">{fmtAngka(v.nilai, k === "beban" ? 0 : 1)}</td>
+                      <td className="num">{k === "beban" ? <NilaiBeban k={v} /> : fmtAngka(v.nilai, 1)}</td>
                       <td className="num">{zTeks(v)}</td>
                       <td className="num">{fmtAngka(v.bobot, 2)}</td>
                     </tr>
@@ -484,8 +491,7 @@ function DetailAtlet({ athleteId, kembali }: { athleteId: string; kembali(): voi
             <Kosong>{skor.reason}</Kosong>
           )}
           <p className="muted kecil" style={{ marginTop: 8 }}>
-            Rumus {skor.ok ? skor.data.formulaVersion : "v1"}. Readiness = 50 + 10 × rata-rata berbobot z. Beban = jumlah RPE × menit 3 hari
-            terakhir.
+            Rumus {skor.ok ? skor.data.formulaVersion : "v1"}. Readiness = 50 + 10 × rata-rata berbobot z. Beban = menit intensitas Garmin 3 hari bila tersedia; tanpa Garmin, jumlah RPE × menit 3 hari (AU).
           </p>
         </div>
       </div>

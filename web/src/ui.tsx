@@ -1,5 +1,6 @@
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import type {
+  KomponenSkor,
   Actor,
   CommandResult,
   JenisSesi,
@@ -207,6 +208,31 @@ export function SkorBar({ skor }: { skor: number | null }) {
         <i style={{ width: `${skor === null ? 0 : Math.max(0, Math.min(100, skor))}%` }} />
       </span>
     </span>
+  );
+}
+
+/**
+ * Nilai Beban beserta satuannya. Mode Garmin = total menit intensitas 3 hari,
+ * mode manual = jumlah RPE x menit Sesi 3 hari (AU).
+ */
+export function fmtBeban(k: KomponenSkor | undefined): { nilai: string; satuan: string; sumber: string } {
+  // Tanpa skor hari ini, mode belum diketahui; jangan menebak.
+  if (!k?.sumber) return { nilai: fmtAngka(k?.nilai ?? null), satuan: "", sumber: "" };
+  const garmin = k.sumber === "garmin";
+  return {
+    nilai: fmtAngka(k.nilai),
+    satuan: garmin ? "mnt" : "AU",
+    sumber: garmin ? "Garmin" : "RPE manual",
+  };
+}
+
+export function NilaiBeban({ k }: { k: KomponenSkor | undefined }) {
+  const b = fmtBeban(k);
+  return (
+    <>
+      {b.nilai}
+      {b.satuan && <small> {b.satuan}</small>}
+    </>
   );
 }
 

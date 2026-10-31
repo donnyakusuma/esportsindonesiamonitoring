@@ -22,7 +22,7 @@ describe("Persetujuan", () => {
     const rizky = d.tambahAtlet("rizky");
     data(d.svc.kirimCheckIn(rizky, payloadCheckIn()));
     d.majuHari();
-    data(d.svc.cabutPersetujuan(rizky, { jenis: "kuesioner" }));
+    data(d.svc.cabutPersetujuan(d.manajer, { athleteId: rizky.athleteId!, jenis: "kuesioner" }));
     ditolak(d.svc.kirimCheckIn(rizky, payloadCheckIn()), /persetujuan/);
     ditolak(
       d.svc.catatSesi(rizky, { jenis: "scrim", durasiMenit: 60, mulaiAt: d.clock.nowISO(), rpeAktual: 5 }),
@@ -58,7 +58,7 @@ describe("Persetujuan", () => {
     d.majuHari(3);
     ditolak(d.svc.kirimCheckIn(dimas, payloadCheckIn()), /18 tahun.*persetujuan ulang/);
 
-    data(d.svc.berikanPersetujuan(dimas, { jenis: "kuesioner" }));
+    data(d.svc.berikanPersetujuan(d.manajer, { athleteId: dimas.athleteId!, jenis: "kuesioner" }));
     data(d.svc.kirimCheckIn(dimas, payloadCheckIn()));
   });
 });

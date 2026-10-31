@@ -17,7 +17,16 @@ import { enamButirWellness, indeksTidur } from "./instrumen.js";
  * mengikuti PRD secara utuh, sehingga menambah Reaksi/Fisiologis di tahap
  * berikutnya tidak mengubah fungsi-fungsi di sini.
  */
-export const SKOR_FORMULA_VERSION = "v1";
+export const SKOR_FORMULA_VERSION = "v1.1";
+
+/**
+ * Riwayat versi rumus:
+ * - v1: Beban = jumlah RPE x menit Sesi 3 hari.
+ * - v1.1: Beban dua mode. Bila ada data Garmin dan baseline-nya siap, Beban =
+ *   total menit intensitas Garmin 3 hari; selain itu kembali ke RPE x menit.
+ *   Tiap mode dibandingkan dengan baseline-nya sendiri karena satuannya beda.
+ */
+export const MIN_STD_BEBAN_GARMIN = 10;
 
 export const DEFAULT_SCORE_CONFIG: ScoreConfig = {
   bobot: {
@@ -96,6 +105,9 @@ export interface ComponentInput {
   nilaiHariIni: number | null; // null bila tidak ada data hari ini
   baseline: BaselineStat;
   lebihTinggiLebihBaik: boolean;
+  /** Mengganti batas bawah simpangan baku dari konfigurasi, mis. untuk satuan Beban Garmin. */
+  minStd?: number;
+  sumber?: KomponenSkor["sumber"];
 }
 
 export interface ReadinessResult {
@@ -122,10 +134,11 @@ export function hitungReadiness(
         z: null,
         bobot,
         tersedia: false,
+        ...(input.sumber && { sumber: input.sumber }),
       };
       continue;
     }
-    const minStd = config.minStdDev[input.key] ?? 0;
+    const minStd = input.minStd ?? config.minStdDev[input.key] ?? 0;
     const z = hitungZ(
       input.nilaiHariIni as number,
       input.baseline,
@@ -137,6 +150,7 @@ export function hitungReadiness(
       z,
       bobot,
       tersedia: true,
+      ...(input.sumber && { sumber: input.sumber }),
     };
     weightedSum += bobot * z;
     weightTotal += bobot;

@@ -269,10 +269,11 @@ export function buatDemo(): Demo {
       })
     );
     akun.simpan(p.id, p.id, `${p.id}123`);
-    wajib(svc.berikanPersetujuan(atlet(p.id), { jenis: "kuesioner" }));
+    // Persetujuan dicatat Super admin berdasarkan kontrak yang ditandatangani atlet.
+    wajib(svc.berikanPersetujuan(manajer, { athleteId: p.id, jenis: "kuesioner" }));
     // Yoga belum menghubungkan jam Garmin-nya, sebagai contoh atlet tanpa persetujuan Data wearable.
-    if (p.id !== "yoga") wajib(svc.berikanPersetujuan(atlet(p.id), { jenis: "wearable" }));
-    if (p.wali) wajib(svc.setujuiSebagaiWali({ athleteId: p.id, guardianUserId: p.wali }));
+    if (p.id !== "yoga") wajib(svc.berikanPersetujuan(manajer, { athleteId: p.id, jenis: "wearable" }));
+    if (p.wali) wajib(svc.catatPersetujuanWali(manajer, { athleteId: p.id }));
     // Akun Garmin baru bisa dihubungkan setelah persetujuan (dan persetujuan wali) berlaku.
     if (p.id !== "yoga") wajib(svc.hubungkanAkunGarmin(atlet(p.id), { garminUserId: `garmin-${p.id}` }));
   }
