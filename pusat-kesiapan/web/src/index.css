@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+/* Pusat Kesiapan Timnas Esports — tampilan terang ala alat kerja federasi: latar abu muda, panel putih bergaris tipis,
+   teks tinta, merah & emas dari logo PB ESI dipakai secukupnya (garis merek, sorotan kecil). Barlow / Barlow Semi Condensed.
+   Warna status khusus kondisi atlet (diuji di permukaan putih) selalu disertai ikon + label. Grafik: seri biru tua. */
+@theme {
+  --font-sans: "Barlow", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Barlow Semi Condensed", "Barlow", sans-serif;
+
+  --color-latar: #f2f3f5;
+  --color-panel: #ffffff;
+  --color-panel-2: #f5f6f8;
+  --color-garis: #e2e5ea;
+  --color-teks: #171a21;
+  --color-redup: #586070;
+  --color-samar: #8b919c;
+  --color-aksen: #171a21;
+  --color-aksen-600: #2c313b;
+  --color-merek: #d7262f;
+  --color-emas: #b8892a;
+  --color-seri: #1e3a6e;
+  --color-jejak: #e8ebf0;
+  --color-siap: #0e8a4f;
+  --color-waspada: #e08a00;
+  --color-risiko: #c4202f;
+  --color-siap-teks: #0b6b3d;
+  --color-waspada-teks: #8f5200;
+  --color-risiko-teks: #a51b28;
+  --color-kurang: #8b919c;
+}
+
+html { color-scheme: light; }
+body { margin: 0; background: var(--color-latar); color: var(--color-teks); font-family: var(--font-sans); font-size: 15px; -webkit-font-smoothing: antialiased; }
+:focus-visible { outline: 2px solid var(--color-seri); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { *, ::before, ::after { animation: none !important; transition: none !important; } }
+
+.tampil { font-family: var(--font-display); letter-spacing: 0; }
+.angka { font-family: var(--font-display); font-variant-numeric: tabular-nums; }
+.alis { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--color-samar); }
+.gulir::-webkit-scrollbar { width: 8px; height: 8px; }
+.gulir::-webkit-scrollbar-thumb { background: #cfd4dc; border-radius: 8px; }
+
+.tabel { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.tabel th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--color-samar); padding: 10px 12px; border-bottom: 1px solid var(--color-garis); white-space: nowrap; background: var(--color-panel-2); }
+.tabel td { padding: 10px 12px; border-bottom: 1px solid #eceef2; vertical-align: middle; }
+.tabel tbody tr:hover td { background: #f8f9fb; }
+.tabel tr:last-child td { border-bottom: 0; }
