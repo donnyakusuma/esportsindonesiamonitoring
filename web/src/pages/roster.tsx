@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Athlete, JenisKelamin } from "../../../src/index.js";
 import { usiaPadaTanggal } from "../../../src/modules/akses.js";
+import { Lampu } from "../performa.js";
 import { CincinReadiness, fmtTanggal, Info, inisial, Jendela, Pesan, StatusBadge, useAksi, useApp } from "../ui.js";
 
 /**
@@ -130,10 +131,16 @@ export function DaftarAtlet({ bukaReadiness }: { bukaReadiness?(athleteId: strin
             {bisaLihatSkor && !a.archived && <ReadinessKartu athleteId={a.id} />}
             <dl className="profil kecil-profil">
               <dt>Jenis kelamin</dt>
-              <dd>{a.jenisKelamin ? JENIS_KELAMIN_LABEL[a.jenisKelamin] : "–"}</dd>
+              <dd>{a.jenisKelamin ? JENIS_KELAMIN_LABEL[a.jenisKelamin] : <span className="muted">Belum diisi</span>}</dd>
               <dt>Tempat, tgl lahir</dt>
               <dd>
-                {a.tempatLahir ?? "–"}, {fmtTanggal(a.tanggalLahir)} ({usiaPadaTanggal(a.tanggalLahir, hariIni)} th)
+                {a.tempatLahir || a.tanggalLahir ? (
+                  <>
+                    {a.tempatLahir ?? "–"}, {a.tanggalLahir ? `${fmtTanggal(a.tanggalLahir)} (${usiaPadaTanggal(a.tanggalLahir, hariIni)} th)` : "–"}
+                  </>
+                ) : (
+                  <span className="muted">Belum diisi</span>
+                )}
               </dd>
               <dt>Number of event</dt>
               <dd>{a.kelompok ?? "–"}</dd>
@@ -252,21 +259,28 @@ export function DaftarAtlet({ bukaReadiness }: { bukaReadiness?(athleteId: strin
 function ReadinessKartu({ athleteId }: { athleteId: string }) {
   const { svc, actor, hariIni } = useApp();
   const r = svc.skorHarian(actor, { athleteId, tanggal: hariIni });
+  const p = svc.indeksPerforma(actor, { athleteId, tanggal: hariIni });
   const status = r.ok ? r.data.status : "abu_abu";
   return (
     <div className="kartu-readiness">
       <CincinReadiness ukuran={84} skor={r.ok ? r.data.readiness : null} status={status} />
-      <div className="stack">
+      <div className="stack" style={{ flex: 1 }}>
         <StatusBadge status={status} />
         <span className="muted kecil">{r.ok ? r.data.statusReason : "Check-in hari ini belum terisi."}</span>
       </div>
+      {p.ok && (
+        <span className="stack" style={{ gap: 4, alignItems: "center" }} title={`Indeks Performa ${p.data.skor === null ? "–" : Math.round(p.data.skor)}`}>
+          <Lampu status={p.data.status} ukuran="kecil" />
+          <span className="muted kecil">Performa</span>
+        </span>
+      )}
     </div>
   );
 }
 
 interface IsianProfil {
   nama: string;
-  jenisKelamin: JenisKelamin;
+  jenisKelamin?: JenisKelamin;
   tempatLahir: string;
   tanggalLahir: string;
   kelompok: string;
@@ -324,9 +338,9 @@ function FormProfil(props: { judul: string; awal?: Athlete; batal(): void; simpa
   const anak = /^\d{4}-\d{2}-\d{2}$/.test(lahir) && usiaPadaTanggal(lahir, hariIni) < 18;
   const galat = {
     nama: !nama.trim() ? "Isi nama lengkap." : "",
-    jk: !jk ? "Pilih jenis kelamin." : "",
-    tempat: !tempat.trim() ? "Isi tempat lahir." : "",
-    lahir: !lahir ? "Isi tanggal lahir." : lahir > hariIni ? "Tanggal lahir tidak boleh di masa depan." : "",
+    jk: "",
+    tempat: "",
+    lahir: lahir > hariIni ? "Tanggal lahir tidak boleh di masa depan." : "",
     kelompok: !kelompok ? "Pilih atau isi Number of event." : "",
     akun: akun.validasi(a?.id ?? null, username, sandi) ?? "",
   };
@@ -341,10 +355,10 @@ function FormProfil(props: { judul: string; awal?: Athlete; batal(): void; simpa
         e.preventDefault();
         setDicoba(true);
         setGalatSimpan("");
-        if (!valid || !jk) return;
+        if (!valid) return;
         const g = props.simpan({
           nama,
-          jenisKelamin: jk,
+          jenisKelamin: jk || undefined,
           tempatLahir: tempat,
           tanggalLahir: lahir,
           kelompok,
@@ -381,13 +395,14 @@ function FormProfil(props: { judul: string; awal?: Athlete; batal(): void; simpa
         </label>
         <label className="field">
           Tanggal lahir
+          <span className="hint">Wajib sebelum data atlet diproses</span>
           <input id="profil-lahir" type="date" value={lahir} max={hariIni} onChange={(e) => setLahir(e.target.value)} aria-invalid={dicoba && !!galat.lahir} />
           {tampilGalat(galat.lahir)}
         </label>
       </div>
       <div className="field">
         <label htmlFor="profil-kelompok">Number of event</label>
-        <span className="hint">Kelompok atlet, mis. Divisi MLBB. Pilih yang ada atau tambahkan yang baru.</span>
+        <span className="hint">Nomor pertandingan atlet, mis. Mobile Legends: Bang Bang. Pilih yang ada atau tambahkan yang baru.</span>
         <select id="profil-kelompok" value={pilihKel} onChange={(e) => setPilihKel(e.target.value)}>
           {opsiKelompok.map((k) => (
             <option key={k} value={k}>

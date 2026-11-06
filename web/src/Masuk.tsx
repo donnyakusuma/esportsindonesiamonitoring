@@ -8,7 +8,15 @@ export type Sebagai = "admin" | { userId: string };
  * membuka semua persona, sedangkan akun atlet dan staf (diatur Super admin
  * atau Admin di form profil) langsung masuk sebagai pemilik akun itu saja.
  */
-export function Masuk({ periksa, masuk }: { periksa(username: string, password: string): HasilMasuk; masuk(sebagai: Sebagai): void }) {
+export function Masuk({
+  periksa,
+  masuk,
+  contoh,
+}: {
+  periksa(username: string, password: string): HasilMasuk;
+  masuk(sebagai: Sebagai): void;
+  contoh?: boolean;
+}) {
   const [user, setUser] = useState("");
   const [pass, setPass] = useState("");
   const [lihat, setLihat] = useState(false);
@@ -33,7 +41,7 @@ export function Masuk({ periksa, masuk }: { periksa(username: string, password: 
         }}
       >
         <div className="masuk-kepala">
-          <img className="logo-lengkap" src="/logo-esi.png" alt="Esports Federation of Indonesia" />
+          <img className="logo-lengkap" src={`${import.meta.env.BASE_URL}logo-esi.png`} alt="Esports Federation of Indonesia" />
           <h1 className="sr-only">Esports Indonesia</h1>
         </div>
 
@@ -78,7 +86,8 @@ export function Masuk({ periksa, masuk }: { periksa(username: string, password: 
         <button type="submit" className="masuk-tombol">
           Masuk
         </button>
-        <p className="masuk-demo">Akun demo: admin / admin · manajer: rina / rina123 · atlet: raka / raka123</p>
+        <p className="masuk-demo">Akun admin prototipe: admin / admin</p>
+        {contoh && <p className="masuk-demo">Menampilkan data contoh untuk gambaran, bukan data asli atlet.</p>}
       </form>
     </main>
   );

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Actor } from "../../src/index.js";
-import { buatDemo, hariIniTim, NAMA } from "./demo.js";
+import { buatDemo, hariIniTim } from "./demo.js";
 import { Masuk, type Sebagai } from "./Masuk.js";
 import { HalamanAtlet, MENU_ATLET } from "./pages/atlet.js";
 import { HalamanManajer, MENU_MANAJER } from "./pages/manajer.js";
@@ -37,6 +37,17 @@ function halamanAwal(a: Actor): Halaman {
 }
 
 const KUNCI_SESI = "readiness-masuk";
+const KUNCI_CONTOH = "readiness-data-contoh";
+
+/** Data contoh aktif kecuali pengguna mematikannya (disimpan di browser ini). */
+function modeContoh(): boolean {
+  return localStorage.getItem(KUNCI_CONTOH) !== "0";
+}
+
+function gantiModeContoh(nyala: boolean) {
+  localStorage.setItem(KUNCI_CONTOH, nyala ? "1" : "0");
+  location.reload();
+}
 
 /** Siapa yang sedang masuk: "admin" (semua persona) atau satu akun (hanya dirinya). */
 function bacaSesi(): Sebagai | null {
@@ -48,7 +59,8 @@ function bacaSesi(): Sebagai | null {
 
 export function App() {
   // Data demo dibuat sekali per muat halaman, jadi tetap ada setelah keluar lalu masuk lagi.
-  const demo = useMemo(buatDemo, []);
+  const contoh = useMemo(modeContoh, []);
+  const demo = useMemo(() => buatDemo({ contoh }), [contoh]);
   const aktif = (userId: string) => demo.daftarPersona().some((p) => p.userId === userId);
   const [sesi, setSesi] = useState<Sebagai | null>(() => {
     const s = bacaSesi();
@@ -59,6 +71,7 @@ export function App() {
   if (!sesi) {
     return (
       <Masuk
+        contoh={contoh}
         periksa={(user, sandi) => {
           const h = demo.akun.periksa(user, sandi);
           if (h.ok && h.sebagai !== "admin" && !aktif(h.sebagai.userId)) {
@@ -78,6 +91,7 @@ export function App() {
   return (
     <Aplikasi
       demo={demo}
+      contoh={contoh}
       terkunci={sesi === "admin" ? null : sesi.userId}
       keluar={() => {
         sessionStorage.removeItem(KUNCI_SESI);
@@ -87,7 +101,17 @@ export function App() {
   );
 }
 
-function Aplikasi({ demo, terkunci, keluar }: { demo: ReturnType<typeof buatDemo>; terkunci: string | null; keluar(): void }) {
+function Aplikasi({
+  demo,
+  contoh,
+  terkunci,
+  keluar,
+}: {
+  demo: ReturnType<typeof buatDemo>;
+  contoh: boolean;
+  terkunci: string | null;
+  keluar(): void;
+}) {
   const [versi, setVersi] = useState(0);
   // Akun atlet hanya bisa menjadi dirinya sendiri; admin bebas memilih persona.
   const persona = demo.daftarPersona().filter((p) => !terkunci || p.userId === terkunci);
@@ -117,7 +141,7 @@ function Aplikasi({ demo, terkunci, keluar }: { demo: ReturnType<typeof buatDemo
     versi,
     segarkan: () => setVersi((v) => v + 1),
     // Nama atlet diambil dari profil agar perubahan nama langsung terlihat di semua halaman.
-    nama: (id) => namaAtlet.get(id) ?? NAMA[id] ?? id,
+    nama: (id) => namaAtlet.get(id) ?? id,
     kelompok,
     daftarKelompok,
     kelompokAtlet,
@@ -192,11 +216,36 @@ function Aplikasi({ demo, terkunci, keluar }: { demo: ReturnType<typeof buatDemo
               ))}
           </nav>
           <div className="side-foot">
-            Prototipe: data demo disimpan di memori browser dan kembali ke awal saat halaman dimuat ulang.
+            <div className="row spread saklar-contoh">
+              <span>
+                <b>Data contoh</b>
+                <span>{contoh ? "Aktif" : "Mati"}</span>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={contoh}
+                aria-label="Tampilkan data contoh"
+                className={`saklar ${contoh ? "nyala" : ""}`}
+                onClick={() => gantiModeContoh(!contoh)}
+              >
+                <span />
+              </button>
+            </div>
+            Prototipe: data disimpan di memori browser dan kembali ke awal saat halaman dimuat ulang.
           </div>
         </aside>
 
         <div className="main">
+          {contoh && (
+            <div className="spanduk-contoh" role="note">
+              <b>Data contoh.</b> Angka, catatan, dan laporan di aplikasi ini dibuat acak untuk memberi gambaran, bukan data asli atlet atau
+              pelatih.{" "}
+              <button className="link" onClick={() => gantiModeContoh(false)}>
+                Matikan data contoh
+              </button>
+            </div>
+          )}
           <header className="top">
             <span className="tanggal">{fmtTanggal(ctx.hariIni)}</span>
             {!terkunci && (

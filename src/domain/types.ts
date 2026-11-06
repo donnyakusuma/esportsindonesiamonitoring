@@ -38,7 +38,8 @@ export interface Athlete {
   id: string;
   teamId: string;
   nama: string;
-  tanggalLahir: string; // ISO date YYYY-MM-DD
+  /** ISO date YYYY-MM-DD. Boleh kosong saat atlet didaftarkan; data baru diproses setelah diisi. */
+  tanggalLahir?: string;
   tempatLahir?: string;
   jenisKelamin?: JenisKelamin;
   /** Kelompok "Number of event" tempat Atlet bergabung, mis. "Divisi MLBB". */
@@ -55,6 +56,12 @@ export interface Membership {
   athleteId?: string;
   /** Nama tampilan anggota staf. Nama Atlet disimpan di profil Atlet. */
   nama?: string;
+  /** Jabatan dalam struktur, mis. "Ketua BTN" atau "Pelatih". */
+  jabatan?: string;
+  /** Unit struktur, mis. "Badan Tim Nasional (BTN)", "Manajemen Timnas", "Kepelatihan Timnas", atau nomor pertandingan. */
+  unit?: string;
+  /** Nomor pertandingan yang ditangani (untuk pelatih nomor), sama dengan kelompok Atlet. */
+  kelompok?: string;
   /**
    * Status Admin: staf yang diberi otoritas kontrol yang sama dengan Super
    * admin (Manajer Tim), yaitu mengelola Atlet, anggota, dan membaca Log Audit.
@@ -99,6 +106,9 @@ export interface CheckInItems {
   stres: number; // 1-5
   mood: number; // 1-5
   motivasiBerlatih: number; // 1-5
+  /** Data subjektif singkat (opsional, tidak masuk Wellness Score v1): 1 = sangat rendah, 5 = sangat tinggi. */
+  energi?: number;
+  fokus?: number;
 }
 
 export interface CheckInVersion {
@@ -106,6 +116,7 @@ export interface CheckInVersion {
   petaNyeri: PetaNyeri;
   screenTimeJamKemarin: number;
   catatanBebas?: string;
+  catatanLatihan?: string;
   editedAt: string;
   editedBy: string;
 }
@@ -119,6 +130,8 @@ export interface CheckIn {
   petaNyeri: PetaNyeri;
   screenTimeJamKemarin: number;
   catatanBebas?: string;
+  /** Catatan latihan dari atlet; berbeda dengan catatan bebas, ini boleh dibaca Staf Pelatih. */
+  catatanLatihan?: string;
   createdAt: string;
   updatedAt: string;
   history: CheckInVersion[];
@@ -199,7 +212,8 @@ export interface DataWearable {
   sumber: "garmin";
   langkah: number | null;
   menitIntensitas: number | null;
-  tidur: { durasiMenit: number; skor: number | null } | null;
+  /** `mulai`/`bangun` = jam tidur dan jam bangun (HH:mm, waktu Tim), untuk konsistensi jam tidur. */
+  tidur: { durasiMenit: number; skor: number | null; mulai?: string; bangun?: string } | null;
   /** Total kalori terbakar (aktif + istirahat), kkal. */
   kalori: number | null;
   /** Denyut per menit. */
@@ -215,6 +229,10 @@ export interface DataWearable {
   respirasi: number | null;
   /** mmHg. */
   tekananDarah: { sistolik: number; diastolik: number } | null;
+  /** HRV malam: RMSSD dalam milidetik. */
+  hrvRmssd?: number | null;
+  /** Total waktu duduk/tidak aktif saat terjaga, menit. */
+  durasiDudukMenit?: number | null;
   diterimaAt: string;
 }
 
@@ -224,6 +242,7 @@ export interface DataWearable {
  */
 export type JenisDataGarmin =
   | "dailies"
+  | "hrv"
   | "sleeps"
   | "pulse_ox"
   | "respiration"

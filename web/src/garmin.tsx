@@ -19,7 +19,9 @@ type Kunci =
   | "bodyBattery"
   | "komposisiTubuh"
   | "respirasi"
-  | "tekananDarah";
+  | "tekananDarah"
+  | "hrv"
+  | "duduk";
 
 interface Metrik {
   kunci: Kunci;
@@ -55,6 +57,16 @@ export const METRIK_GARMIN: Metrik[] = [
     tampil: (d) => ({ nilai: fmtAngka(d.menitIntensitas), satuan: "menit" }),
   },
   {
+    kunci: "duduk",
+    label: "Sedentary Time",
+    ikon: "M9 4a1.8 1.8 0 100 3.6A1.8 1.8 0 009 4zM8 9.5v5h6l1.5 5.5M8 14.5l-2 5.5M5 12h3M17 13v7M12 14.5V20",
+    angka: (d) => d.durasiDudukMenit ?? null,
+    tampil: (d) =>
+      d.durasiDudukMenit != null
+        ? { nilai: jamMenit(d.durasiDudukMenit), ket: "Durasi duduk saat terjaga", perhatian: d.durasiDudukMenit > 600 }
+        : { nilai: "–" },
+  },
+  {
     kunci: "tidur",
     label: "Sleep",
     ikon: "M19 15.5A8.5 8.5 0 018.5 5a8.5 8.5 0 1010.5 10.5z",
@@ -63,7 +75,9 @@ export const METRIK_GARMIN: Metrik[] = [
       d.tidur
         ? {
             nilai: jamMenit(d.tidur.durasiMenit),
-            ket: d.tidur.skor !== null ? `Skor tidur ${d.tidur.skor}` : undefined,
+            ket: [d.tidur.mulai && d.tidur.bangun && `${d.tidur.mulai.replace(":", ".")}–${d.tidur.bangun.replace(":", ".")}`, d.tidur.skor !== null && `Skor ${d.tidur.skor}`]
+              .filter(Boolean)
+              .join(" · ") || undefined,
             perhatian: d.tidur.durasiMenit < 360,
           }
         : { nilai: "–" },
@@ -84,6 +98,13 @@ export const METRIK_GARMIN: Metrik[] = [
       d.detakJantung
         ? { nilai: String(d.detakJantung.istirahat), satuan: "bpm istirahat", ket: `Rata-rata ${d.detakJantung.rataRata} · maks ${d.detakJantung.maks}` }
         : { nilai: "–" },
+  },
+  {
+    kunci: "hrv",
+    label: "HRV",
+    ikon: "M2.5 12h3l1.5-4 2.5 9 2.5-12 2.5 10 1.5-3h5.5",
+    angka: (d) => d.hrvRmssd ?? null,
+    tampil: (d) => (d.hrvRmssd != null ? { nilai: String(d.hrvRmssd), satuan: "ms RMSSD", ket: "Variabilitas detak jantung malam" } : { nilai: "–" }),
   },
   {
     kunci: "stres",
@@ -237,6 +258,7 @@ export function GarminTim({ baris, buka }: { baris: BarisWearableTim[]; buka(ath
   const fmtRata = (m: Metrik, v: number | null): string => {
     if (v === null) return "–";
     if (m.kunci === "tidur") return jamMenit(Math.round(v * 60));
+    if (m.kunci === "duduk") return jamMenit(Math.round(v));
     if (m.kunci === "respirasi" || m.kunci === "komposisiTubuh") return fmtAngka(v, 1);
     return fmtAngka(v, 0);
   };
@@ -251,6 +273,7 @@ export function GarminTim({ baris, buka }: { baris: BarisWearableTim[]; buka(ath
     komposisiTubuh: "kg",
     respirasi: "napas/mnt",
     tekananDarah: "mmHg sistolik",
+    hrv: "ms",
   };
 
   return (

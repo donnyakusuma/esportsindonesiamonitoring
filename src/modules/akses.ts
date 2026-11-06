@@ -22,6 +22,8 @@ export function usiaPadaTanggal(tanggalLahir: string, tanggal: string): number {
 }
 
 export function masihDiBawahUmur(athlete: Athlete, tanggal: string): boolean {
+  // Tanggal lahir kosong diperlakukan sebagai belum pasti dewasa (lihat cekPersetujuanBerlaku).
+  if (!athlete.tanggalLahir) return true;
   return usiaPadaTanggal(athlete.tanggalLahir, tanggal) < USIA_DEWASA;
 }
 
@@ -46,6 +48,12 @@ export function cekPersetujuanBerlaku(params: {
 
   if (!consent || !consent.granted) {
     return { diizinkan: false, alasan: "Belum ada persetujuan untuk jenis data ini." };
+  }
+  if (!athlete.tanggalLahir) {
+    return {
+      diizinkan: false,
+      alasan: "Tanggal lahir atlet belum diisi, jadi status usia (dan kebutuhan persetujuan wali) belum bisa dipastikan.",
+    };
   }
 
   const diBawahUmurSaatPersetujuan = masihDiBawahUmur(athlete, consent.at.slice(0, 10));

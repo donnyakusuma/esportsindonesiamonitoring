@@ -15,8 +15,9 @@ import { fmtWaktu, Info, inisial, Pesan, useAksi, useApp } from "../ui.js";
 
 /** Ringkasan Garmin Health API dan metrik Kondisi Atlet yang diisinya. */
 const JENIS_DATA: { id: JenisDataGarmin; label: string; metrik: string[] }[] = [
-  { id: "dailies", label: "Dailies", metrik: ["langkah", "menitIntensitas", "kalori", "detakJantung", "stres", "bodyBattery"] },
+  { id: "dailies", label: "Dailies", metrik: ["langkah", "menitIntensitas", "duduk", "kalori", "detakJantung", "stres", "bodyBattery"] },
   { id: "sleeps", label: "Sleeps", metrik: ["tidur"] },
+  { id: "hrv", label: "HRV", metrik: ["hrv"] },
   { id: "pulse_ox", label: "Pulse Ox", metrik: ["spo2"] },
   { id: "respiration", label: "Respiration", metrik: ["respirasi"] },
   { id: "body_compositions", label: "Body Compositions", metrik: ["komposisiTubuh"] },

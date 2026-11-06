@@ -134,7 +134,7 @@ export function StatusBadge({ status }: { status: StatusReadiness }) {
 export function Logo({ ukuran }: { ukuran: number }) {
   return (
     <span className="logo-lambang" style={{ width: ukuran, height: ukuran }}>
-      <img src="/logo-esi-lambang.png" alt="" width={ukuran} height={ukuran} />
+      <img src={`${import.meta.env.BASE_URL}logo-esi-lambang.png`} alt="" width={ukuran} height={ukuran} />
     </span>
   );
 }

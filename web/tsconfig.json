@@ -9,7 +9,7 @@
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["react", "react-dom"]
+    "types": ["react", "react-dom", "vite/client"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "../src/**/*.ts"]
 }

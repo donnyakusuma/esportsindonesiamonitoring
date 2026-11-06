@@ -70,6 +70,9 @@ export function validasiCheckInItems(items: CheckInItems): ValidationResult {
       errors.push(`Butir ${nama} harus berskala 1-5.`);
     }
   }
+  for (const [nama, nilai] of [["energi", items.energi], ["fokus", items.fokus]] as const) {
+    if (nilai !== undefined && !inScale1to5(nilai)) errors.push(`Butir ${nama} harus berskala 1-5.`);
+  }
   return { valid: errors.length === 0, errors };
 }
 

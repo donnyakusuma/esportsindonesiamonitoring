@@ -5,6 +5,7 @@ import { KATEGORI_CATATAN_VALID } from "../../../src/modules/kolaborasi.js";
 import { tambahHari } from "../../../src/domain/tanggal.js";
 import { CatatanItem, Linimasa, TulisCatatan } from "../bersama.js";
 import { GarminTim, KartuGarmin } from "../garmin.js";
+import { KartuPerforma, PerformaTim } from "../performa.js";
 import { TrenChart } from "../TrenChart.js";
 import { HalamanIntegrasiGarmin } from "./integrasi.js";
 import { ItemLaporan } from "./atlet.js";
@@ -307,6 +308,14 @@ function PapanTim({ buka }: { buka(athleteId: string): void }) {
 
       <div className="card">
         <div className="card-head">
+          <h2>Indeks Performa</h2>
+          <span className="chip">Eksperimental</span>
+        </div>
+        <PerformaTim tanggal={tanggal} buka={buka} />
+      </div>
+
+      <div className="card">
+        <div className="card-head">
           <h2>Kondisi Atlet</h2>
           <span className="muted kecil">Klik baris untuk membuka profil atlet</span>
         </div>
@@ -496,6 +505,11 @@ function DetailAtlet({ athleteId, kembali }: { athleteId: string; kembali(): voi
         </div>
       </div>
 
+      <div className="grid-2" style={{ gridTemplateColumns: "minmax(0, 1.6fr) minmax(min(300px, 100%), 1fr)" }}>
+        <KartuPerforma athleteId={athleteId} />
+        <SubjektifHariIni athleteId={athleteId} />
+      </div>
+
       <div className="card">
         <h2>Kondisi Atlet</h2>
         {garmin.ok ? (
@@ -529,6 +543,46 @@ function DetailAtlet({ athleteId, kembali }: { athleteId: string; kembali(): voi
         )}
       </div>
     </>
+  );
+}
+
+/** Data subjektif singkat dari check-in hari ini: mood, energi, fokus, dan catatan latihan. */
+function SubjektifHariIni({ athleteId }: { athleteId: string }) {
+  const { svc, actor, hariIni } = useApp();
+  const r = svc.subjektifHarian(actor, { athleteId, tanggal: hariIni });
+  const c = r.ok ? r.data : null;
+  const butir: [string, number | undefined][] = c
+    ? [
+        ["Mood", c.mood],
+        ["Energi", c.energi],
+        ["Fokus", c.fokus],
+      ]
+    : [];
+  return (
+    <div className="card stack">
+      <h2>Subjektif hari ini</h2>
+      {!c ? (
+        <Kosong>Belum check-in hari ini.</Kosong>
+      ) : (
+        <>
+          <div className="trio">
+            {butir.map(([k, v]) => (
+              <div key={k}>
+                <span className="k">{k}</span>
+                <span className={`v ${v !== undefined && v <= 2 ? "perhatian-teks" : ""}`}>
+                  {v ?? "–"}
+                  <small> / 5</small>
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="stack" style={{ gap: 4 }}>
+            <span className="muted kecil">Catatan latihan</span>
+            <p className="ink-2">{c.catatanLatihan ? `“${c.catatanLatihan}”` : "Tidak ada catatan latihan hari ini."}</p>
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

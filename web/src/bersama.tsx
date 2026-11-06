@@ -87,11 +87,14 @@ function IsiLinimasa({ e }: { e: LinimasaEvent }) {
           <b>Check-in</b> · tidur {fmtAngka(c.items.durasiTidurJam, 1)} jam (kualitas {c.items.kualitasTidur}/5) · lelah{" "}
           {c.items.kelelahanUmum} · mata {c.items.kelelahanMata} · stres {c.items.stres} · mood {c.items.mood} · motivasi{" "}
           {c.items.motivasiBerlatih}
+          {c.items.energi !== undefined && ` · energi ${c.items.energi}`}
+          {c.items.fokus !== undefined && ` · fokus ${c.items.fokus}`}
           {nyeri.length > 0 && (
             <div className="ink-2 kecil">
               Nyeri: {nyeri.map(([k, v]) => `${AREA_NYERI_LABEL[k as keyof typeof AREA_NYERI_LABEL]} ${v}/10`).join(", ")}
             </div>
           )}
+          {c.catatanLatihan && <div className="ink-2 kecil">Catatan latihan: “{c.catatanLatihan}”</div>}
           {c.catatanBebas && <div className="ink-2 kecil">“{c.catatanBebas}”</div>}
           {c.history.length > 1 && <div className="muted kecil">Diubah {c.history.length - 1} kali</div>}
         </div>

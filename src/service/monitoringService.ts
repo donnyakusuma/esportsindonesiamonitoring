@@ -52,6 +52,14 @@ import {
 } from "../modules/instrumen.js";
 import { ambilSebutan, kategoriValid } from "../modules/kolaborasi.js";
 import {
+  BASELINE_PERFORMA,
+  type HariPerforma,
+  hitungIndeksPerforma,
+  type IndeksPerforma,
+  jamKeMenitMalam,
+  JENDELA_PENGHALUS,
+} from "../modules/performa.js";
+import {
   type BaselineStat,
   type ComponentInput,
   DEFAULT_SCORE_CONFIG,
@@ -72,6 +80,8 @@ export interface CheckInPayload {
   petaNyeri: PetaNyeri;
   screenTimeJamKemarin: number;
   catatanBebas?: string;
+  /** Catatan latihan singkat; dibaca staf (berbeda dengan catatan bebas). */
+  catatanLatihan?: string;
 }
 
 export interface BarisPapanTim {
@@ -116,10 +126,24 @@ function validasiDataWearable(d: DataWearableInput): string | null {
   if (d.tekananDarah && (!di(d.tekananDarah.sistolik, 60, 260) || !di(d.tekananDarah.diastolik, 30, 160))) {
     return "Tekanan darah di luar rentang.";
   }
+  if (!di(d.hrvRmssd, 5, 300)) return "HRV (RMSSD) di luar rentang.";
+  if (!di(d.durasiDudukMenit, 0, 1440)) return "Durasi duduk di luar rentang.";
+  const jam = /^([01]\d|2[0-3]):[0-5]\d$/;
+  if (d.tidur && ((d.tidur.mulai && !jam.test(d.tidur.mulai)) || (d.tidur.bangun && !jam.test(d.tidur.bangun)))) {
+    return "Jam tidur/bangun harus berformat HH:mm.";
+  }
   return null;
 }
 
 export const BATAS_LAPORAN = { karakter: 2000, lampiran: 5, fotoByte: 10_000_000, videoByte: 100_000_000 } as const;
+
+/** Data struktur anggota staf/pengurus. */
+export interface ProfilStafInput {
+  nama?: string;
+  jabatan?: string;
+  unit?: string;
+  kelompok?: string;
+}
 
 export interface ProfilAtletInput {
   tempatLahir?: string;
@@ -129,7 +153,7 @@ export interface ProfilAtletInput {
 
 function validasiProfilAtlet(p: { nama?: string; tanggalLahir?: string; jenisKelamin?: string; kelompok?: string }): string | null {
   if (p.nama !== undefined && !p.nama.trim()) return "Nama lengkap wajib diisi.";
-  if (p.tanggalLahir !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(p.tanggalLahir)) {
+  if (p.tanggalLahir && !/^\d{4}-\d{2}-\d{2}$/.test(p.tanggalLahir)) {
     return "Tanggal lahir wajib diisi dengan format YYYY-MM-DD.";
   }
   if (p.jenisKelamin !== undefined && p.jenisKelamin !== "laki_laki" && p.jenisKelamin !== "perempuan") {
@@ -202,7 +226,7 @@ export class MonitoringService {
 
   undangAnggota(
     actor: Actor,
-    payload: { userId: string; peran: Peran; subPeran?: SubPeranTimSupport }
+    payload: { userId: string; peran: Peran; subPeran?: SubPeranTimSupport } & ProfilStafInput
   ): CommandResult<Membership> {
     const kontrol = this.cekKontrol(actor);
     if (!kontrol.ok) return kontrol;
@@ -212,6 +236,10 @@ export class MonitoringService {
       teamId: actor.teamId,
       peran: payload.peran,
       subPeran: payload.subPeran,
+      nama: payload.nama?.trim() || undefined,
+      jabatan: payload.jabatan?.trim() || undefined,
+      unit: payload.unit?.trim() || undefined,
+      kelompok: payload.kelompok?.trim() || undefined,
     };
     this.storage.saveMembership(m);
     this.audit(actor, "undangAnggota", "membership", payload.userId, payload.peran);
@@ -238,7 +266,7 @@ export class MonitoringService {
 
   daftarkanAtlet(
     actor: Actor,
-    payload: { athleteId?: string; nama: string; tanggalLahir: string; guardianUserId?: string } & ProfilAtletInput
+    payload: { athleteId?: string; nama: string; tanggalLahir?: string; guardianUserId?: string } & ProfilAtletInput
   ): CommandResult<Athlete> {
     const kontrol = this.cekKontrol(actor);
     if (!kontrol.ok) return kontrol;
@@ -249,7 +277,7 @@ export class MonitoringService {
       id,
       teamId: actor.teamId,
       nama: payload.nama.trim(),
-      tanggalLahir: payload.tanggalLahir,
+      tanggalLahir: payload.tanggalLahir || undefined,
       tempatLahir: payload.tempatLahir?.trim() || undefined,
       jenisKelamin: payload.jenisKelamin,
       kelompok: payload.kelompok?.trim(),
@@ -275,7 +303,7 @@ export class MonitoringService {
     const baru: Athlete = {
       ...athlete,
       nama: payload.nama !== undefined ? payload.nama.trim() : athlete.nama,
-      tanggalLahir: payload.tanggalLahir ?? athlete.tanggalLahir,
+      tanggalLahir: payload.tanggalLahir !== undefined ? payload.tanggalLahir || undefined : athlete.tanggalLahir,
       tempatLahir: payload.tempatLahir !== undefined ? payload.tempatLahir.trim() || undefined : athlete.tempatLahir,
       jenisKelamin: payload.jenisKelamin ?? athlete.jenisKelamin,
       kelompok: payload.kelompok !== undefined ? payload.kelompok.trim() : athlete.kelompok,
@@ -335,7 +363,7 @@ export class MonitoringService {
    * Super admin tidak bisa diubah, dan tidak ada yang bisa mengubah status
    * Admin dirinya sendiri.
    */
-  ubahProfilAnggota(actor: Actor, payload: { userId: string; nama?: string; admin?: boolean }): CommandResult<Membership> {
+  ubahProfilAnggota(actor: Actor, payload: { userId: string; admin?: boolean } & ProfilStafInput): CommandResult<Membership> {
     const kontrol = this.cekKontrol(actor);
     if (!kontrol.ok) return kontrol;
     const m = this.storage.getMembership(payload.userId, actor.teamId);
@@ -348,9 +376,12 @@ export class MonitoringService {
     const baru: Membership = {
       ...m,
       nama: payload.nama !== undefined ? payload.nama.trim() : m.nama,
+      jabatan: payload.jabatan !== undefined ? payload.jabatan.trim() || undefined : m.jabatan,
+      unit: payload.unit !== undefined ? payload.unit.trim() || undefined : m.unit,
+      kelompok: payload.kelompok !== undefined ? payload.kelompok.trim() || undefined : m.kelompok,
       admin: m.peran === "manajer_tim" ? undefined : (payload.admin ?? m.admin) || undefined,
     };
-    const berubah = (["nama", "admin"] as const).filter((k) => baru[k] !== m[k]);
+    const berubah = (["nama", "jabatan", "unit", "kelompok", "admin"] as const).filter((k) => baru[k] !== m[k]);
     this.storage.saveMembership(baru);
     this.audit(actor, "ubahProfilAnggota", "membership", m.userId, berubah.join(", "));
     return ok(baru);
@@ -560,6 +591,8 @@ export class MonitoringService {
     if (!(payload.screenTimeJamKemarin >= 0 && payload.screenTimeJamKemarin <= 24)) {
       return fail("Screen time harus di antara 0 dan 24 jam.");
     }
+    const catatanLatihan = payload.catatanLatihan?.trim() || undefined;
+    if (catatanLatihan && catatanLatihan.length > 1000) return fail("Catatan latihan maksimal 1000 karakter.");
 
     const existing = this.storage.getCheckIn(athlete.id, tanggal);
     if (ubah && !existing) return fail("Check-in hari ini belum ada; gunakan kirimCheckIn.");
@@ -575,6 +608,7 @@ export class MonitoringService {
       petaNyeri: payload.petaNyeri,
       screenTimeJamKemarin: payload.screenTimeJamKemarin,
       catatanBebas: payload.catatanBebas,
+      catatanLatihan,
       editedAt: now,
       editedBy: actor.userId,
     };
@@ -587,6 +621,7 @@ export class MonitoringService {
       petaNyeri: payload.petaNyeri,
       screenTimeJamKemarin: payload.screenTimeJamKemarin,
       catatanBebas: payload.catatanBebas,
+      catatanLatihan,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
       history: [...(existing?.history ?? []), version],
@@ -729,6 +764,101 @@ export class MonitoringService {
     this.storage.saveLaporan(baru);
     this.audit(actor, "tandaiLaporanDibaca", "athlete", l.athleteId, l.id);
     return ok(baru);
+  }
+
+  // ───────────────────────── Indeks Performa ─────────────────────────
+
+  /**
+   * Indeks Performa (eksperimental) satu Atlet: tidur, pemulihan (HRV + denyut
+   * istirahat), stres, dan durasi duduk dibandingkan dengan baseline atlet itu
+   * sendiri. Lihat modules/performa.ts untuk rumusnya. Aturan baca sama
+   * dengan skor readiness.
+   */
+  indeksPerforma(
+    actor: Actor,
+    payload: { athleteId: string; tanggal: string }
+  ): CommandResult<IndeksPerforma & { tren: { tanggal: string; skor: number | null; status: StatusReadiness }[] }> {
+    const akses = this.cekBacaSkorIndividu(actor, payload.athleteId);
+    if (!akses.ok) return akses;
+    const athlete = this.storage.getAthlete(payload.athleteId)!;
+    return ok(this.hitungPerforma(athlete, payload.tanggal, 7));
+  }
+
+  /**
+   * Data subjektif singkat satu hari (mood, energi, fokus, catatan latihan).
+   * Aturan baca sama dengan skor; teks bebas Check-in tidak ikut.
+   */
+  subjektifHarian(
+    actor: Actor,
+    payload: { athleteId: string; tanggal: string }
+  ): CommandResult<{ mood: number; energi?: number; fokus?: number; catatanLatihan?: string } | null> {
+    const akses = this.cekBacaSkorIndividu(actor, payload.athleteId);
+    if (!akses.ok) return akses;
+    const c = this.storage.getCheckIn(payload.athleteId, payload.tanggal);
+    if (!c) return ok(null);
+    return ok({ mood: c.items.mood, energi: c.items.energi, fokus: c.items.fokus, catatanLatihan: c.catatanLatihan });
+  }
+
+  /** Indeks Performa seluruh Atlet aktif pada satu tanggal, untuk dashboard staf. */
+  performaTim(actor: Actor, payload: { tanggal: string }): CommandResult<(IndeksPerforma & { athleteId: string; nama: string })[]> {
+    const cek = cekPeran(actor, ["staf_pelatih", "tim_support"]);
+    if (!cek.diizinkan) return fail(cek.alasan!);
+    const urutan: Record<StatusReadiness, number> = { merah: 0, kuning: 1, abu_abu: 2, hijau: 3 };
+    return ok(
+      this.storage
+        .listAthletesByTeam(actor.teamId)
+        .filter((a) => !a.archived)
+        .map((a) => {
+          const { tren: _tren, ...p } = this.hitungPerforma(a, payload.tanggal, 1);
+          return { ...p, athleteId: a.id, nama: a.nama };
+        })
+        .sort((a, b) => urutan[a.status] - urutan[b.status] || a.nama.localeCompare(b.nama))
+    );
+  }
+
+  private hitungPerforma(athlete: Athlete, tanggal: string, hariTren: number) {
+    const config = resolveScoreConfig(this.storage.getTeam(athlete.teamId));
+    const ambang = { merah: config.ambangMerah, kuning: config.ambangKuning };
+    // Baseline 28 hari + jendela penghalus + 7 hari untuk konsistensi jam tidur + panjang tren.
+    const dari = tambahHari(tanggal, -(BASELINE_PERFORMA.maksHari + JENDELA_PENGHALUS + 7 + hariTren));
+    const riwayat = this.hariPerforma(athlete, dari, tanggal);
+    const jendela = (t: string) => Array.from({ length: JENDELA_PENGHALUS }, (_, i) => tambahHari(t, i - JENDELA_PENGHALUS + 1));
+    const tren = Array.from({ length: hariTren }, (_, i) => {
+      const t = tambahHari(tanggal, i - hariTren + 1);
+      const h = hitungIndeksPerforma(riwayat, jendela(t), ambang);
+      return { tanggal: t, skor: h.skor, status: h.status };
+    });
+    return { ...hitungIndeksPerforma(riwayat, jendela(tanggal), ambang), tren };
+  }
+
+  /**
+   * Data harian untuk Indeks Performa. Tidur memakai data Garmin bila ada;
+   * tanpa Garmin, durasi dan kualitas tidur diambil dari Check-in. Data
+   * wearable hanya dipakai bila persetujuannya berlaku.
+   */
+  private hariPerforma(athlete: Athlete, dari: string, sampai: string): HariPerforma[] {
+    const wearableBoleh = this.cekPersetujuan(athlete, "wearable", sampai).ok;
+    const wearable = new Map(
+      (wearableBoleh ? this.storage.listDataWearableByAthlete(athlete.id, dari, sampai) : []).map((d) => [d.tanggal, d])
+    );
+    const checkIn = new Map(this.storage.listCheckInsByAthlete(athlete.id, dari, sampai).map((c) => [c.tanggal, c]));
+    const hasil: HariPerforma[] = [];
+    for (let t = dari; t <= sampai; t = tambahHari(t, 1)) {
+      const w = wearable.get(t);
+      const c = checkIn.get(t);
+      if (!w && !c) continue;
+      hasil.push({
+        tanggal: t,
+        tidurDurasi: w?.tidur?.durasiMenit ?? (c ? Math.round(c.items.durasiTidurJam * 60) : null),
+        tidurKualitas: w?.tidur?.skor ?? (c ? ((c.items.kualitasTidur - 1) / 4) * 100 : null),
+        tidurMulai: w?.tidur?.mulai ? jamKeMenitMalam(w.tidur.mulai) : null,
+        hrvRmssd: w?.hrvRmssd ?? null,
+        rhr: w?.detakJantung?.istirahat ?? null,
+        stres: w?.stres ?? null,
+        duduk: w?.durasiDudukMenit ?? null,
+      });
+    }
+    return hasil;
   }
 
   // ───────────────────────── Integrasi Garmin ─────────────────────────

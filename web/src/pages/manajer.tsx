@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Membership, Peran, SubPeranTimSupport } from "../../../src/index.js";
+import { NOMOR, UNIT } from "../demo.js";
 import { HalamanIntegrasiGarmin } from "./integrasi.js";
 import { DaftarAtlet } from "./roster.js";
 import { fmtWaktu, Info, Jendela, Kosong, labelOtoritas, labelPeran, PERAN_LABEL, Pesan, SUBPERAN_LABEL, useAksi, useApp } from "../ui.js";
@@ -46,18 +47,89 @@ export function Anggota() {
   const [edit, setEdit] = useState<string | null>(null);
   const r = svc.anggotaTim(actor);
   if (!r.ok) return <Pesan umpan={{ jenis: "gagal", teks: r.reason }} />;
-  // Super admin selalu di atas, lalu Admin, lalu staf lain.
-  const staf = r.data.anggota
-    .filter((m) => m.peran !== "atlet")
-    .sort((a, b) => urutanOtoritas(a) - urutanOtoritas(b) || nama(a.userId).localeCompare(nama(b.userId)));
+  // Dalam satu unit, urutan mengikuti struktur (urutan pendaftaran): Ketua sebelum Wakil, dst.
+  const staf = r.data.anggota.filter((m) => m.peran !== "atlet").sort((a, b) => urutanOtoritas(a) - urutanOtoritas(b));
+  const atletAktif = r.data.atlet.filter((a) => !a.archived);
   const sedangEdit = staf.find((m) => m.userId === edit);
+
+  // Nomor pertandingan: urutan struktur dulu, lalu nomor baru yang ditambahkan Super admin.
+  const nomor = [
+    ...new Set([...NOMOR.map((n) => n.nomor), ...staf.map((m) => m.kelompok ?? ""), ...atletAktif.map((a) => a.kelompok ?? "")]),
+  ].filter((n) => n && (staf.some((m) => m.kelompok === n) || atletAktif.some((a) => a.kelompok === n)));
+  const pengurus = Object.values(UNIT).map((u) => ({ unit: u, anggota: staf.filter((m) => m.unit === u) }));
+  const lainnya = staf.filter((m) => !Object.values(UNIT).includes(m.unit as never) && !(m.kelompok && nomor.includes(m.kelompok)));
+
+  const baris = (m: Membership) => {
+    const otoritas = labelOtoritas(m);
+    const superAdmin = m.peran === "manajer_tim";
+    return (
+      <tr key={m.userId}>
+        <td>
+          <b>{nama(m.userId)}</b>
+          {otoritas && <span className={`lencana-otoritas ${superAdmin ? "super" : ""}`}>{otoritas}</span>}
+          <div className="muted kecil">
+            {m.jabatan ?? labelPeran(m)} · @{akun.username(m.userId) || m.userId}
+          </div>
+        </td>
+        <td>
+          {m.userId === actor.userId || superAdmin ? (
+            <span className="ink-2">{labelPeran(m)}</span>
+          ) : (
+            <select
+              aria-label={`Peran ${nama(m.userId)}`}
+              value={m.subPeran ? `${m.peran}:${m.subPeran}` : m.peran}
+              onChange={(e) => {
+                const [peran, subPeran] = e.target.value.split(":") as [Peran, SubPeranTimSupport | undefined];
+                jalankan(svc.ubahPeran(actor, { userId: m.userId, peran, subPeran }), `Peran ${nama(m.userId)} diubah.`);
+              }}
+            >
+              {pilihanPeran().map((p) => (
+                <option key={p.nilai} value={p.nilai}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </td>
+        <td>
+          <div className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }}>
+            <button className="btn utama kecil" aria-label={`Edit ${nama(m.userId)}`} onClick={() => setEdit(m.userId)}>
+              Edit
+            </button>
+            {m.userId !== actor.userId && !superAdmin && (
+              <button
+                className="btn bahaya kecil"
+                aria-label={`Hapus ${nama(m.userId)}`}
+                onClick={() => {
+                  if (confirm(`Hapus ${nama(m.userId)} (${m.jabatan ?? labelPeran(m)}) dari Tim? Akun ini tidak bisa lagi masuk ke Tim.`)) {
+                    if (jalankan(svc.hapusAnggota(actor, { userId: m.userId }), `${nama(m.userId)} dihapus dari Tim.`)) {
+                      akun.hapus(m.userId);
+                    }
+                  }
+                }}
+              >
+                Hapus
+              </button>
+            )}
+          </div>
+        </td>
+      </tr>
+    );
+  };
+  const tabel = (anggota: Membership[]) => (
+    <div className="table-wrap">
+      <table>
+        <tbody>{anggota.map(baris)}</tbody>
+      </table>
+    </div>
+  );
 
   return (
     <>
       <div className="judul">
         <div>
           <h1>Anggota Tim</h1>
-          <p>Kelola staf Divisi MLBB. Profil atlet dikelola di menu Atlet.</p>
+          <p>Struktur pengurus, pelatih, dan atlet Tim Nasional Esports Indonesia. Profil atlet dikelola di menu Atlet.</p>
         </div>
       </div>
       <Info>
@@ -68,81 +140,52 @@ export function Anggota() {
       </Info>
       <Pesan umpan={umpan} />
 
+      <div className="struktur-grid">
+        {pengurus.map((g) => (
+          <section key={g.unit} className="card struktur-unit" aria-label={g.unit}>
+            <h2>{g.unit}</h2>
+            {g.anggota.length === 0 ? <Kosong>Belum ada anggota.</Kosong> : tabel(g.anggota)}
+          </section>
+        ))}
+      </div>
+
+      <h2 className="judul-bagian">Pelatih nomor dan atlet</h2>
+      <div className="struktur-grid">
+        {nomor.map((n) => {
+          const atlet = atletAktif.filter((a) => a.kelompok === n).sort((a, b) => a.nama.localeCompare(b.nama));
+          return (
+            <section key={n} className="card struktur-unit" aria-label={n}>
+              <div className="card-head">
+                <h2>{n}</h2>
+                <span className="muted kecil">{atlet.length} atlet</span>
+              </div>
+              {tabel(staf.filter((m) => m.kelompok === n))}
+              <div className="daftar-atlet-nomor">
+                {atlet.length === 0 ? (
+                  <span className="muted kecil">Belum ada atlet.</span>
+                ) : (
+                  atlet.map((a) => (
+                    <span key={a.id} className="chip">
+                      {a.nama}
+                    </span>
+                  ))
+                )}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+
       <div className="grid-2">
+        {lainnya.length > 0 && (
+          <section className="card" aria-label="Anggota lain">
+            <h2>Anggota lain</h2>
+            {tabel(lainnya)}
+          </section>
+        )}
         <div className="card">
-          <h2>Staf</h2>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Nama</th>
-                  <th>Peran</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {staf.map((m) => {
-                  const otoritas = labelOtoritas(m);
-                  const superAdmin = m.peran === "manajer_tim";
-                  return (
-                    <tr key={m.userId}>
-                      <td>
-                        <b>{nama(m.userId)}</b>
-                        {otoritas && <span className={`lencana-otoritas ${superAdmin ? "super" : ""}`}>{otoritas}</span>}
-                        <div className="muted kecil">@{akun.username(m.userId) || m.userId}</div>
-                      </td>
-                      <td>
-                        {m.userId === actor.userId || superAdmin ? (
-                          labelPeran(m)
-                        ) : (
-                          <select
-                            aria-label={`Peran ${nama(m.userId)}`}
-                            value={m.subPeran ? `${m.peran}:${m.subPeran}` : m.peran}
-                            onChange={(e) => {
-                              const [peran, subPeran] = e.target.value.split(":") as [Peran, SubPeranTimSupport | undefined];
-                              jalankan(svc.ubahPeran(actor, { userId: m.userId, peran, subPeran }), `Peran ${nama(m.userId)} diubah.`);
-                            }}
-                          >
-                            {pilihanPeran().map((p) => (
-                              <option key={p.nilai} value={p.nilai}>
-                                {p.label}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                      </td>
-                      <td>
-                        <div className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }}>
-                          <button className="btn utama kecil" aria-label={`Edit ${nama(m.userId)}`} onClick={() => setEdit(m.userId)}>
-                            Edit
-                          </button>
-                          {m.userId !== actor.userId && !superAdmin && (
-                            <button
-                              className="btn bahaya kecil"
-                              aria-label={`Hapus ${nama(m.userId)}`}
-                              onClick={() => {
-                                if (confirm(`Hapus ${nama(m.userId)} (${labelPeran(m)}) dari Tim? Akun ini tidak bisa lagi masuk ke Tim.`)) {
-                                  if (jalankan(svc.hapusAnggota(actor, { userId: m.userId }), `${nama(m.userId)} dihapus dari Tim.`)) {
-                                    akun.hapus(m.userId);
-                                  }
-                                }
-                              }}
-                            >
-                              Hapus
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div className="card">
-          <h2>Undang staf</h2>
-          <FormUndang />
+          <h2>Undang anggota</h2>
+          <FormUndang daftarUnit={[...Object.values(UNIT), ...nomor]} />
         </div>
       </div>
 
@@ -150,11 +193,19 @@ export function Anggota() {
         <Jendela judul={`Edit profil ${nama(sedangEdit.userId)}`} tutup={() => setEdit(null)}>
           <FormProfilStaf
             anggota={sedangEdit}
+            daftarUnit={[...Object.values(UNIT), ...nomor]}
             batal={() => setEdit(null)}
             simpan={(isi) => {
               const galat = akun.validasi(sedangEdit.userId, isi.username, isi.password);
               if (galat) return galat;
-              const h = svc.ubahProfilAnggota(actor, { userId: sedangEdit.userId, nama: isi.nama, admin: isi.admin });
+              const h = svc.ubahProfilAnggota(actor, {
+                userId: sedangEdit.userId,
+                nama: isi.nama,
+                admin: isi.admin,
+                jabatan: isi.jabatan,
+                unit: isi.unit,
+                kelompok: nomor.includes(isi.unit.trim()) ? isi.unit.trim() : "",
+              });
               if (!h.ok) return h.reason;
               akun.simpan(sedangEdit.userId, isi.username, isi.password);
               jalankan(h, `Profil ${isi.nama.trim()} tersimpan.`);
@@ -174,8 +225,9 @@ function urutanOtoritas(m: Membership): number {
 
 function FormProfilStaf(props: {
   anggota: Membership;
+  daftarUnit: string[];
   batal(): void;
-  simpan(isi: { nama: string; admin: boolean; username: string; password: string }): string | null;
+  simpan(isi: { nama: string; admin: boolean; jabatan: string; unit: string; username: string; password: string }): string | null;
 }) {
   const { actor, nama: namaDari, akun } = useApp();
   const m = props.anggota;
@@ -183,6 +235,8 @@ function FormProfilStaf(props: {
   const diriSendiri = m.userId === actor.userId;
   const [nama, setNama] = useState(namaDari(m.userId));
   const [admin, setAdmin] = useState(!!m.admin);
+  const [jabatan, setJabatan] = useState(m.jabatan ?? "");
+  const [unit, setUnit] = useState(m.unit ?? "");
   const [username, setUsername] = useState(akun.username(m.userId));
   const [sandi, setSandi] = useState("");
   const [lihat, setLihat] = useState(false);
@@ -195,7 +249,7 @@ function FormProfilStaf(props: {
       onSubmit={(e) => {
         e.preventDefault();
         if (!nama.trim()) return setGalat("Isi nama lengkap.");
-        setGalat(props.simpan({ nama, admin, username, password: sandi }) ?? "");
+        setGalat(props.simpan({ nama, admin, jabatan, unit, username, password: sandi }) ?? "");
       }}
     >
       <h2>Edit profil {namaDari(m.userId)}</h2>
@@ -203,6 +257,21 @@ function FormProfilStaf(props: {
         Nama lengkap
         <input id="staf-nama" type="text" autoFocus value={nama} onChange={(e) => setNama(e.target.value)} />
       </label>
+      <div className="fields">
+        <label className="field">
+          Jabatan
+          <input id="staf-jabatan" type="text" value={jabatan} onChange={(e) => setJabatan(e.target.value)} placeholder="mis. Pelatih" />
+        </label>
+        <label className="field">
+          Unit / nomor
+          <input id="staf-unit" type="text" list="daftar-unit" value={unit} onChange={(e) => setUnit(e.target.value)} />
+          <datalist id="daftar-unit">
+            {props.daftarUnit.map((u) => (
+              <option key={u} value={u} />
+            ))}
+          </datalist>
+        </label>
+      </div>
       <div className="field">
         <span>Peran</span>
         <span style={{ fontWeight: 400 }}>{labelPeran(m)}</span>
@@ -276,18 +345,38 @@ function pilihanPeran(): { nilai: string; label: string }[] {
   return hasil;
 }
 
-function FormUndang() {
+function FormUndang({ daftarUnit }: { daftarUnit: string[] }) {
   const { svc, actor } = useApp();
   const { umpan, jalankan } = useAksi();
   const [userId, setUserId] = useState("");
-  const [peran, setPeran] = useState("tim_support:nutrisionis");
+  const [namaLengkap, setNamaLengkap] = useState("");
+  const [jabatan, setJabatan] = useState("Pelatih");
+  const [unit, setUnit] = useState("");
+  const [peran, setPeran] = useState("staf_pelatih");
   return (
     <div className="stack">
       <div className="fields">
         <label className="field">
+          Nama lengkap
+          <input type="text" value={namaLengkap} onChange={(e) => setNamaLengkap(e.target.value)} />
+        </label>
+        <label className="field">
           ID pengguna
           <span className="hint">Dipakai juga untuk sebutan @</span>
           <input type="text" value={userId} onChange={(e) => setUserId(e.target.value.trim())} placeholder="mis. lina" />
+        </label>
+        <label className="field">
+          Jabatan
+          <input type="text" value={jabatan} onChange={(e) => setJabatan(e.target.value)} />
+        </label>
+        <label className="field">
+          Unit / nomor
+          <input type="text" list="daftar-unit-undang" value={unit} onChange={(e) => setUnit(e.target.value)} />
+          <datalist id="daftar-unit-undang">
+            {daftarUnit.map((u) => (
+              <option key={u} value={u} />
+            ))}
+          </datalist>
         </label>
         <label className="field">
           Peran
@@ -305,8 +394,21 @@ function FormUndang() {
           className="btn utama"
           onClick={() => {
             if (!userId) return;
-            const [p, s] = peran.split(":") as [Peran, SubPeranTimSupport | undefined];
-            if (jalankan(svc.undangAnggota(actor, { userId, peran: p, subPeran: s }), `@${userId} ditambahkan ke Tim.`)) setUserId("");
+            const [p, sp] = peran.split(":") as [Peran, SubPeranTimSupport | undefined];
+            const u = unit.trim();
+            const hasil = svc.undangAnggota(actor, {
+              userId,
+              peran: p,
+              subPeran: sp,
+              nama: namaLengkap,
+              jabatan,
+              unit: u,
+              kelompok: Object.values(UNIT).includes(u as never) ? undefined : u || undefined,
+            });
+            if (jalankan(hasil, `${namaLengkap.trim() || "@" + userId} ditambahkan ke Tim.`)) {
+              setUserId("");
+              setNamaLengkap("");
+            }
           }}
         >
           Undang

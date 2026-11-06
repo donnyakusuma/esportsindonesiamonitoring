@@ -4,6 +4,7 @@ import { AREA_NYERI, BATAS_LAPORAN, RPE_LABELS } from "../../../src/index.js";
 import { tambahHari } from "../../../src/domain/tanggal.js";
 import { CatatanItem, Linimasa } from "../bersama.js";
 import { KartuGarmin } from "../garmin.js";
+import { KartuPerforma } from "../performa.js";
 import { TrenChart } from "../TrenChart.js";
 import {
   AREA_NYERI_LABEL,
@@ -132,6 +133,7 @@ function HariIni({ pindah }: { pindah(h: HalamanAtlet): void }) {
           </div>
         </div>
       </div>
+      <KartuPerforma athleteId={actor.athleteId!} judul="Indeks performa saya" />
       <div className="card">
         <div className="card-head">
           <h2>Kondisi saya</h2>
@@ -187,6 +189,8 @@ const BUTIR: { key: keyof CheckInItems; label: string; rendah: string; tinggi: s
   { key: "sakitKepala", label: "Sakit kepala", rendah: "sangat sakit", tinggi: "tidak ada" },
   { key: "stres", label: "Stres", rendah: "sangat stres", tinggi: "sangat rileks" },
   { key: "mood", label: "Mood", rendah: "sangat buruk", tinggi: "sangat baik" },
+  { key: "energi", label: "Energi", rendah: "sangat lemas", tinggi: "sangat berenergi" },
+  { key: "fokus", label: "Fokus", rendah: "sulit fokus", tinggi: "sangat fokus" },
   { key: "motivasiBerlatih", label: "Motivasi berlatih", rendah: "sangat rendah", tinggi: "sangat tinggi" },
 ];
 
@@ -202,10 +206,13 @@ const ISIAN_AWAL: CheckInPayload = {
     stres: 3,
     mood: 3,
     motivasiBerlatih: 3,
+    energi: 3,
+    fokus: 3,
   },
   petaNyeri: NYERI_NOL,
   screenTimeJamKemarin: 8,
   catatanBebas: "",
+  catatanLatihan: "",
 };
 
 function FormCheckIn() {
@@ -224,10 +231,11 @@ function FormCheckIn() {
     const r = svc.checkInKemarin(actor);
     if (r.ok && r.data) {
       setIsian({
-        items: r.data.items,
+        items: { energi: 3, fokus: 3, ...r.data.items },
         petaNyeri: r.data.petaNyeri,
         screenTimeJamKemarin: r.data.screenTimeJamKemarin,
         catatanBebas: "",
+        catatanLatihan: "",
       });
       setUmpan({ jenis: "ok", teks: "Jawaban kemarin dimuat. Sesuaikan dengan kondisi pagi ini." });
     } else {
@@ -249,7 +257,10 @@ function FormCheckIn() {
           Tidur {fmtAngka(sudah.items.durasiTidurJam, 1)} jam, kualitas {sudah.items.kualitasTidur}/5 · kelelahan{" "}
           {sudah.items.kelelahanUmum} · mata {sudah.items.kelelahanMata} · sakit kepala {sudah.items.sakitKepala} · stres{" "}
           {sudah.items.stres} · mood {sudah.items.mood} · motivasi {sudah.items.motivasiBerlatih}
+          {sudah.items.energi !== undefined && ` · energi ${sudah.items.energi}`}
+          {sudah.items.fokus !== undefined && ` · fokus ${sudah.items.fokus}`}
         </div>
+        {sudah.catatanLatihan && <div className="ink-2">Catatan latihan: “{sudah.catatanLatihan}”</div>}
         {terkunci ? (
           <Info>Check-in terkunci karena Sesi pertama hari ini sudah dimulai. Minta staf menulis Catatan koreksi bila ada yang salah.</Info>
         ) : (
@@ -258,10 +269,11 @@ function FormCheckIn() {
               className="btn lebar"
               onClick={() => {
                 setIsian({
-                  items: sudah.items,
+                  items: { energi: 3, fokus: 3, ...sudah.items },
                   petaNyeri: sudah.petaNyeri,
                   screenTimeJamKemarin: sudah.screenTimeJamKemarin,
                   catatanBebas: sudah.catatanBebas ?? "",
+                  catatanLatihan: sudah.catatanLatihan ?? "",
                 });
                 setMengubah(true);
                 setUmpan(null);
@@ -284,7 +296,11 @@ function FormCheckIn() {
       className="stack"
       onSubmit={(e) => {
         e.preventDefault();
-        const payload = { ...isian, catatanBebas: isian.catatanBebas?.trim() || undefined };
+        const payload = {
+          ...isian,
+          catatanBebas: isian.catatanBebas?.trim() || undefined,
+          catatanLatihan: isian.catatanLatihan?.trim() || undefined,
+        };
         const hasil = mengubah ? svc.ubahCheckIn(actor, payload) : svc.kirimCheckIn(actor, payload);
         if (jalankan(hasil, mengubah ? "Check-in diperbarui." : "Check-in terkirim. Terima kasih!")) setMengubah(false);
       }}
@@ -360,7 +376,7 @@ function FormCheckIn() {
                 1 = {b.rendah}, 5 = {b.tinggi}
               </span>
             </div>
-            <Skala label={b.label} nilai={isian.items[b.key]} dari={1} sampai={5} ubah={(n) => setItem(b.key, n)} />
+            <Skala label={b.label} nilai={isian.items[b.key] ?? 3} dari={1} sampai={5} ubah={(n) => setItem(b.key, n)} />
           </div>
         ))}
       </div>
@@ -378,6 +394,19 @@ function FormCheckIn() {
           ))}
         </div>
       </div>
+
+      <label className="field">
+        Catatan latihan (opsional)
+        <span className="hint">Apa yang Anda latih kemarin atau rencana hari ini. Dibaca staf pelatih.</span>
+        <textarea
+          id="catatan-latihan"
+          rows={2}
+          maxLength={1000}
+          placeholder="Mis. drill rotasi 30 menit, lanjut scrim 3 game."
+          value={isian.catatanLatihan ?? ""}
+          onChange={(e) => setIsian((s) => ({ ...s, catatanLatihan: e.target.value }))}
+        />
+      </label>
 
       <label className="field">
         Catatan bebas (opsional)
